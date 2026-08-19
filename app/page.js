@@ -13,18 +13,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
-  BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail
+  BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail,
+  Scissors, HeartPulse, Factory, BadgeCheck
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
 
+const VERTICALS = [
+  { id: 'skincare', fr: 'Soins de la peau', en: 'Skincare' },
+  { id: 'hair', fr: 'Cheveux & Cuir chevelu', en: 'Hair & Scalp' },
+  { id: 'wellness', fr: 'Bien-être', en: 'Wellness' },
+]
+
 const CONCERNS = [
-  { id: 'acne', fr: 'Acné & imperfections', en: 'Acne & blemishes' },
-  { id: 'sensitive', fr: 'Peau sensible', en: 'Sensitive skin' },
-  { id: 'aging', fr: 'Anti-âge', en: 'Anti-aging' },
-  { id: 'dryness', fr: 'Sécheresse', en: 'Dryness' },
-  { id: 'oily', fr: 'Peau grasse', en: 'Oily skin' },
-  { id: 'pigmentation', fr: 'Taches pigmentaires', en: 'Dark spots' },
+  { id: 'acne', vertical: 'skincare', fr: 'Acné & imperfections', en: 'Acne & blemishes' },
+  { id: 'sensitive', vertical: 'skincare', fr: 'Peau sensible', en: 'Sensitive skin' },
+  { id: 'aging', vertical: 'skincare', fr: 'Anti-âge', en: 'Anti-aging' },
+  { id: 'dryness', vertical: 'skincare', fr: 'Sécheresse', en: 'Dryness' },
+  { id: 'oily', vertical: 'skincare', fr: 'Peau grasse', en: 'Oily skin' },
+  { id: 'pigmentation', vertical: 'skincare', fr: 'Taches pigmentaires', en: 'Dark spots' },
+  { id: 'hair-loss', vertical: 'hair', fr: 'Chute de cheveux', en: 'Hair loss' },
+  { id: 'dandruff', vertical: 'hair', fr: 'Pellicules', en: 'Dandruff' },
+  { id: 'dry-hair', vertical: 'hair', fr: 'Cheveux secs & abîmés', en: 'Dry & damaged hair' },
+  { id: 'sensitive-scalp', vertical: 'hair', fr: 'Cuir chevelu sensible', en: 'Sensitive scalp' },
+  { id: 'sleep', vertical: 'wellness', fr: 'Sommeil', en: 'Sleep' },
+  { id: 'stress', vertical: 'wellness', fr: 'Stress & détente', en: 'Stress & relaxation' },
+  { id: 'energy', vertical: 'wellness', fr: 'Énergie & fatigue', en: 'Energy & fatigue' },
+  { id: 'digestion', vertical: 'wellness', fr: 'Digestion', en: 'Digestion' },
+  { id: 'immunity', vertical: 'wellness', fr: 'Immunité', en: 'Immunity' },
 ]
 const SKIN_TYPES = [
   { id: 'normal', fr: 'Normale', en: 'Normal' },
@@ -34,10 +50,17 @@ const SKIN_TYPES = [
   { id: 'sensitive', fr: 'Sensible', en: 'Sensitive' },
 ]
 const CATEGORIES = [
-  { id: 'cleanser', fr: 'Nettoyant', en: 'Cleanser' },
-  { id: 'serum', fr: 'Sérum', en: 'Serum' },
-  { id: 'moisturizer', fr: 'Crème hydratante', en: 'Moisturizer' },
-  { id: 'sunscreen', fr: 'Protection solaire', en: 'Sunscreen' },
+  { id: 'cleanser', vertical: 'skincare', fr: 'Nettoyant', en: 'Cleanser' },
+  { id: 'serum', vertical: 'skincare', fr: 'Sérum', en: 'Serum' },
+  { id: 'moisturizer', vertical: 'skincare', fr: 'Crème hydratante', en: 'Moisturizer' },
+  { id: 'sunscreen', vertical: 'skincare', fr: 'Protection solaire', en: 'Sunscreen' },
+  { id: 'shampoo', vertical: 'hair', fr: 'Shampoing', en: 'Shampoo' },
+  { id: 'conditioner', vertical: 'hair', fr: 'Après-shampoing', en: 'Conditioner' },
+  { id: 'hair-treatment', vertical: 'hair', fr: 'Soin / Masque capillaire', en: 'Hair treatment' },
+  { id: 'scalp-serum', vertical: 'hair', fr: 'Sérum cuir chevelu', en: 'Scalp serum' },
+  { id: 'supplement', vertical: 'wellness', fr: 'Complément alimentaire', en: 'Supplement' },
+  { id: 'tea', vertical: 'wellness', fr: 'Tisane', en: 'Herbal tea' },
+  { id: 'bath-body', vertical: 'wellness', fr: 'Bain & Corps', en: 'Bath & Body' },
 ]
 
 const label = (list, id, lang) => {
@@ -201,18 +224,32 @@ const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
         </div>
       </section>
 
-      {/* Concerns */}
+      {/* Verticals & concerns */}
       <section className="container mx-auto px-4 py-10 md:py-14">
-        <SectionTitle sub={lang === 'fr' ? 'Explorez les produits par préoccupation' : 'Explore products by concern'}>
+        <SectionTitle sub={lang === 'fr' ? 'Trois univers, une même exigence scientifique' : 'Three universes, the same scientific rigor'}>
           {lang === 'fr' ? 'Quelle est votre préoccupation ?' : 'What is your concern?'}
         </SectionTitle>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {CONCERNS.map((c) => (
-            <button key={c.id} data-testid={`concern-${c.id}`} onClick={() => nav('products', null, { concern: c.id })}
-              className="p-4 rounded-xl border border-stone-200 bg-white hover:border-emerald-700 hover:shadow-md transition-all text-left">
-              <Leaf className="h-5 w-5 text-emerald-700 mb-2" />
-              <p className="text-sm font-semibold text-stone-800">{c[lang]}</p>
-            </button>
+        <div className="grid md:grid-cols-3 gap-4">
+          {[
+            { id: 'skincare', icon: <Droplets className="h-6 w-6 text-emerald-700" />, fr: 'Soins de la peau', en: 'Skincare', subFr: 'Acné, sensibilité, anti-âge, taches...', subEn: 'Acne, sensitivity, anti-aging, spots...' },
+            { id: 'hair', icon: <Scissors className="h-6 w-6 text-emerald-700" />, fr: 'Cheveux & Cuir chevelu', en: 'Hair & Scalp', subFr: 'Chute, pellicules, cheveux abîmés...', subEn: 'Hair loss, dandruff, damaged hair...' },
+            { id: 'wellness', icon: <HeartPulse className="h-6 w-6 text-emerald-700" />, fr: 'Bien-être', en: 'Wellness', subFr: 'Sommeil, stress, énergie, digestion...', subEn: 'Sleep, stress, energy, digestion...' },
+          ].map((v) => (
+            <div key={v.id} data-testid={`vertical-card-${v.id}`} className="p-5 rounded-2xl border border-stone-200 bg-white hover:shadow-md transition-all">
+              <button onClick={() => nav('products', null, { vertical: v.id })} className="text-left w-full">
+                <div className="h-11 w-11 rounded-xl bg-emerald-50 flex items-center justify-center mb-3">{v.icon}</div>
+                <p className="font-bold text-stone-900 text-lg" style={{ fontFamily: 'var(--font-playfair), serif' }}>{v[lang]}</p>
+                <p className="text-xs text-stone-500 mt-0.5 mb-3">{lang === 'fr' ? v.subFr : v.subEn}</p>
+              </button>
+              <div className="flex flex-wrap gap-1.5">
+                {CONCERNS.filter((c) => c.vertical === v.id).map((c) => (
+                  <button key={c.id} data-testid={`concern-${c.id}`} onClick={() => nav('products', null, { vertical: v.id, concern: c.id })}
+                    className="px-2.5 py-1 rounded-full border border-stone-200 text-xs font-medium text-stone-600 hover:border-emerald-700 hover:text-emerald-800 transition-colors">
+                    {c[lang]}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>
@@ -338,14 +375,28 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [vertical, setVertical] = useState(initialFilters?.vertical || 'all')
   const [category, setCategory] = useState(initialFilters?.category || 'all')
   const [concern, setConcern] = useState(initialFilters?.concern || 'all')
   const [skinType, setSkinType] = useState('all')
+
+  const visibleCategories = vertical === 'all' ? CATEGORIES : CATEGORIES.filter((c) => c.vertical === vertical)
+  const visibleConcerns = vertical === 'all' ? CONCERNS : CONCERNS.filter((c) => c.vertical === vertical)
+
+  const changeVertical = (v) => {
+    setVertical(v)
+    if (v !== 'all') {
+      setCategory((cur) => (cur !== 'all' && !CATEGORIES.find((c) => c.id === cur && c.vertical === v) ? 'all' : cur))
+      setConcern((cur) => (cur !== 'all' && !CONCERNS.find((c) => c.id === cur && c.vertical === v) ? 'all' : cur))
+      if (v !== 'skincare') setSkinType('all')
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       const p = new URLSearchParams()
+      if (vertical !== 'all') p.set('vertical', vertical)
       if (category !== 'all') p.set('category', category)
       if (concern !== 'all') p.set('concern', concern)
       if (skinType !== 'all') p.set('skin_type', skinType)
@@ -357,13 +408,21 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
     }
     const t = setTimeout(load, search ? 300 : 0)
     return () => clearTimeout(t)
-  }, [search, category, concern, skinType])
+  }, [search, vertical, category, concern, skinType])
 
   return (
     <div className="container mx-auto px-4 py-8">
       <SectionTitle sub={lang === 'fr' ? 'Tous les produits analysés par nos experts' : 'All products analyzed by our experts'}>
         {lang === 'fr' ? 'Produits' : 'Products'}
       </SectionTitle>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {[{ id: 'all', fr: 'Tous', en: 'All' }, ...VERTICALS].map((v) => (
+          <button key={v.id} data-testid={`vertical-tab-${v.id}`} onClick={() => changeVertical(v.id)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${vertical === v.id ? 'bg-emerald-800 text-white border-emerald-800' : 'border-stone-200 text-stone-600 hover:border-stone-400'}`}>
+            {v[lang]}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
@@ -375,23 +434,25 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
             <SelectTrigger data-testid="filter-category" className="w-full md:w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{lang === 'fr' ? 'Catégorie' : 'Category'}</SelectItem>
-              {CATEGORIES.map((c) => <SelectItem key={c.id} value={c.id}>{c[lang]}</SelectItem>)}
+              {visibleCategories.map((c) => <SelectItem key={c.id} value={c.id}>{c[lang]}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={concern} onValueChange={setConcern}>
             <SelectTrigger data-testid="filter-concern" className="w-full md:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{lang === 'fr' ? 'Préoccupation' : 'Concern'}</SelectItem>
-              {CONCERNS.map((c) => <SelectItem key={c.id} value={c.id}>{c[lang]}</SelectItem>)}
+              {visibleConcerns.map((c) => <SelectItem key={c.id} value={c.id}>{c[lang]}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={skinType} onValueChange={setSkinType}>
-            <SelectTrigger data-testid="filter-skin" className="w-full md:w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{lang === 'fr' ? 'Type de peau' : 'Skin type'}</SelectItem>
-              {SKIN_TYPES.map((s) => <SelectItem key={s.id} value={s.id}>{s[lang]}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {(vertical === 'all' || vertical === 'skincare') && (
+            <Select value={skinType} onValueChange={setSkinType}>
+              <SelectTrigger data-testid="filter-skin" className="w-full md:w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{lang === 'fr' ? 'Type de peau' : 'Skin type'}</SelectItem>
+                {SKIN_TYPES.map((s) => <SelectItem key={s.id} value={s.id}>{s[lang]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
       {loading ? (
@@ -524,6 +585,16 @@ const IngredientDetailView = ({ slug, lang, nav }) => {
       </div>
       <p className="text-stone-600 mt-5 leading-relaxed text-base md:text-lg">{i.description?.[lang]}</p>
 
+      {i.regulatory?.[lang] && (
+        <div data-testid="ingredient-regulatory" className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 flex gap-3">
+          <ShieldCheck className="h-4 w-4 text-emerald-700 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-1">{lang === 'fr' ? 'Contexte réglementaire (UE / Allemagne)' : 'Regulatory context (EU / Germany)'}</p>
+            <p className="text-sm text-stone-600 leading-relaxed">{i.regulatory[lang]}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid md:grid-cols-2 gap-4 mt-7">
         <Card className="border-stone-200">
           <CardContent className="p-5">
@@ -592,6 +663,13 @@ const BrandsView = ({ lang, nav, germanOnly }) => {
               </div>
               <p className="text-xs text-stone-400 mt-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{b.city}, {b.country} · {lang === 'fr' ? 'depuis' : 'since'} {b.founded}</p>
               <p className="text-sm text-stone-500 mt-3 line-clamp-3">{b.description?.[lang]}</p>
+              {(b.certifications || []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-3">
+                  {b.certifications.slice(0, 3).map((c) => (
+                    <Badge key={c} variant="secondary" className="bg-stone-100 text-stone-600 text-[10px]">{c}</Badge>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -620,6 +698,33 @@ const BrandDetailView = ({ slug, lang, nav }) => {
         </Button>
       </div>
       <p className="text-stone-600 mt-4 leading-relaxed max-w-3xl">{b.description?.[lang]}</p>
+      <div className="grid sm:grid-cols-2 gap-3 mt-6 max-w-3xl">
+        {b.manufacturer && (
+          <Card className="border-stone-200">
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-1.5 flex items-center gap-1.5">
+                <Factory className="h-3.5 w-3.5" /> {lang === 'fr' ? 'Fabricant' : 'Manufacturer'}
+              </p>
+              <p data-testid="brand-manufacturer" className="text-sm font-semibold text-stone-800">{b.manufacturer}</p>
+              <p className="text-xs text-stone-500 mt-0.5">{b.city}, {b.country}</p>
+            </CardContent>
+          </Card>
+        )}
+        {(b.certifications || []).length > 0 && (
+          <Card className="border-stone-200">
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-2 flex items-center gap-1.5">
+                <BadgeCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? 'Certifications & engagements' : 'Certifications & commitments'}
+              </p>
+              <div className="flex flex-wrap gap-1.5" data-testid="brand-certifications">
+                {b.certifications.map((c) => (
+                  <Badge key={c} className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[11px]">{c}</Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
       <div className="mt-9">
         <SectionTitle>{lang === 'fr' ? `Produits ${b.name}` : `${b.name} products`}</SectionTitle>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
@@ -738,7 +843,7 @@ const FinderView = ({ lang, nav }) => {
     const res = await fetch('/api/finder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ skin_type: skinType, concerns, budget: chosenBudget }),
+      body: JSON.stringify({ skin_type: skinType, concerns, budget: chosenBudget, vertical: 'skincare' }),
     })
     const data = await res.json()
     setResults(data.results || [])
@@ -789,7 +894,7 @@ const FinderView = ({ lang, nav }) => {
           <p className="font-semibold text-stone-900 mb-1 text-lg">{lang === 'fr' ? '2. Quelles sont vos préoccupations ?' : '2. What are your concerns?'}</p>
           <p className="text-sm text-stone-400 mb-4">{lang === 'fr' ? 'Plusieurs choix possibles' : 'Multiple choices allowed'}</p>
           <div className="grid gap-2.5">
-            {CONCERNS.map((c) => (
+            {CONCERNS.filter((c) => c.vertical === 'skincare').map((c) => (
               <OptionBtn key={c.id} testid={`finder-concern-${c.id}`} active={concerns.includes(c.id)} onClick={() => toggleConcern(c.id)}>
                 {c[lang]}
               </OptionBtn>
@@ -1097,7 +1202,8 @@ const ADMIN_FIELDS = {
     { path: 'slug', label: 'Slug', type: 'text' },
     { path: 'brand_name', label: 'Marque (nom)', type: 'text' },
     { path: 'brand_slug', label: 'Marque (slug)', type: 'text' },
-    { path: 'category', label: 'Catégorie (cleanser/serum/moisturizer/sunscreen)', type: 'text' },
+    { path: 'vertical', label: 'Univers (skincare/hair/wellness)', type: 'text' },
+    { path: 'category', label: 'Catégorie (cleanser/serum/moisturizer/sunscreen/shampoo/conditioner/hair-treatment/scalp-serum/supplement/tea/bath-body)', type: 'text' },
     { path: 'price_eur', label: 'Prix (€)', type: 'number' },
     { path: 'rating', label: 'Note (0-5)', type: 'number' },
     { path: 'image', label: 'Image URL', type: 'text' },
@@ -1117,6 +1223,8 @@ const ADMIN_FIELDS = {
     { path: 'founded', label: 'Année de création', type: 'number' },
     { path: 'german', label: 'Marque allemande', type: 'bool' },
     { path: 'website', label: 'Site web', type: 'text' },
+    { path: 'manufacturer', label: 'Fabricant', type: 'text' },
+    { path: 'certifications', label: 'Certifications (csv)', type: 'csv' },
     { path: 'description.fr', label: 'Description FR', type: 'textarea' },
     { path: 'description.en', label: 'Description EN', type: 'textarea' },
   ],
@@ -1132,6 +1240,8 @@ const ADMIN_FIELDS = {
     { path: 'description.en', label: 'Description EN', type: 'textarea' },
     { path: 'benefits.fr', label: 'Bénéfices FR (csv)', type: 'csv' },
     { path: 'benefits.en', label: 'Bénéfices EN (csv)', type: 'csv' },
+    { path: 'regulatory.fr', label: 'Contexte réglementaire FR', type: 'textarea' },
+    { path: 'regulatory.en', label: 'Contexte réglementaire EN', type: 'textarea' },
   ],
   articles: [
     { path: 'slug', label: 'Slug', type: 'text' },

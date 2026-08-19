@@ -1,547 +1,581 @@
 #!/usr/bin/env python3
 """
-Comprehensive backend API test for bilingual skincare platform
-Tests all endpoints: products, ingredients, brands, articles, compare, finder, leads, admin
+Backend API Test Suite for Dermalyze V2 Catalog Expansion
+Tests the 3-vertical catalog (skincare, hair, wellness) with 30 products, 11 brands, 24 ingredients
 """
 
 import requests
-import json
 import sys
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-# Load base URL from environment
-BASE_URL = "https://git-pull-install.preview.emergentagent.com/api"
-ADMIN_PASSWORD = "admin123"
+# Base URL from .env
+BASE_URL = "https://c31ecce2-b7f5-4688-a9d9-6f7bdf63635f.preview.emergentagent.com/api"
 
-class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    END = '\033[0m'
-
-def log_test(name: str, passed: bool, details: str = ""):
-    status = f"{Colors.GREEN}✓ PASS{Colors.END}" if passed else f"{Colors.RED}✗ FAIL{Colors.END}"
-    print(f"{status} | {name}")
-    if details:
-        print(f"       {details}")
-    return passed
-
-def test_get(endpoint: str, expected_status: int = 200, description: str = "") -> Optional[Dict]:
-    """Test GET endpoint"""
-    try:
-        url = f"{BASE_URL}/{endpoint}"
-        response = requests.get(url, timeout=10)
-        passed = response.status_code == expected_status
-        
-        if passed and expected_status == 200:
-            data = response.json()
-            log_test(description or f"GET /{endpoint}", True, f"Status: {response.status_code}")
-            return data
-        elif passed:
-            log_test(description or f"GET /{endpoint}", True, f"Status: {response.status_code} (expected)")
-            return None
+class TestRunner:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+        self.token = None
+        self.test_product_id = None
+    
+    def test(self, name: str, condition: bool, error_msg: str = ""):
+        if condition:
+            print(f"✓ {name}")
+            self.passed += 1
         else:
-            log_test(description or f"GET /{endpoint}", False, f"Expected {expected_status}, got {response.status_code}")
-            return None
-    except Exception as e:
-        log_test(description or f"GET /{endpoint}", False, f"Error: {str(e)}")
-        return None
-
-def test_post(endpoint: str, payload: Dict, expected_status: int = 200, description: str = "", headers: Dict = None) -> Optional[Dict]:
-    """Test POST endpoint"""
-    try:
-        url = f"{BASE_URL}/{endpoint}"
-        response = requests.post(url, json=payload, headers=headers or {}, timeout=10)
-        passed = response.status_code == expected_status
-        
-        if passed and expected_status in [200, 201]:
-            data = response.json()
-            log_test(description or f"POST /{endpoint}", True, f"Status: {response.status_code}")
-            return data
-        elif passed:
-            log_test(description or f"POST /{endpoint}", True, f"Status: {response.status_code} (expected)")
-            return None
+            print(f"✗ {name}")
+            if error_msg:
+                print(f"  Error: {error_msg}")
+            self.failed += 1
+        return condition
+    
+    def summary(self):
+        total = self.passed + self.failed
+        print(f"\n{'='*60}")
+        print(f"Test Results: {self.passed}/{total} passed")
+        if self.failed > 0:
+            print(f"FAILED: {self.failed} tests")
+            sys.exit(1)
         else:
-            log_test(description or f"POST /{endpoint}", False, f"Expected {expected_status}, got {response.status_code}")
-            return None
-    except Exception as e:
-        log_test(description or f"POST /{endpoint}", False, f"Error: {str(e)}")
-        return None
-
-def test_put(endpoint: str, payload: Dict, expected_status: int = 200, description: str = "", headers: Dict = None) -> Optional[Dict]:
-    """Test PUT endpoint"""
-    try:
-        url = f"{BASE_URL}/{endpoint}"
-        response = requests.put(url, json=payload, headers=headers or {}, timeout=10)
-        passed = response.status_code == expected_status
-        
-        if passed and expected_status == 200:
-            data = response.json()
-            log_test(description or f"PUT /{endpoint}", True, f"Status: {response.status_code}")
-            return data
-        elif passed:
-            log_test(description or f"PUT /{endpoint}", True, f"Status: {response.status_code} (expected)")
-            return None
-        else:
-            log_test(description or f"PUT /{endpoint}", False, f"Expected {expected_status}, got {response.status_code}")
-            return None
-    except Exception as e:
-        log_test(description or f"PUT /{endpoint}", False, f"Error: {str(e)}")
-        return None
-
-def test_delete(endpoint: str, expected_status: int = 200, description: str = "", headers: Dict = None) -> bool:
-    """Test DELETE endpoint"""
-    try:
-        url = f"{BASE_URL}/{endpoint}"
-        response = requests.delete(url, headers=headers or {}, timeout=10)
-        passed = response.status_code == expected_status
-        
-        if passed:
-            log_test(description or f"DELETE /{endpoint}", True, f"Status: {response.status_code}")
-            return True
-        else:
-            log_test(description or f"DELETE /{endpoint}", False, f"Expected {expected_status}, got {response.status_code}")
-            return False
-    except Exception as e:
-        log_test(description or f"DELETE /{endpoint}", False, f"Error: {str(e)}")
-        return False
+            print("SUCCESS: All tests passed!")
+            sys.exit(0)
 
 def main():
-    print(f"\n{Colors.BLUE}{'='*80}{Colors.END}")
-    print(f"{Colors.BLUE}Starting Backend API Tests{Colors.END}")
-    print(f"{Colors.BLUE}Base URL: {BASE_URL}{Colors.END}")
-    print(f"{Colors.BLUE}{'='*80}{Colors.END}\n")
+    runner = TestRunner()
     
-    test_results = []
-    admin_token = None
-    test_product_id = None
-    test_brand_id = None
-    test_ingredient_id = None
-    test_article_id = None
+    print("="*60)
+    print("DERMALYZE V2 CATALOG EXPANSION - BACKEND API TESTS")
+    print("="*60)
     
-    # ========== 1. TEST PRODUCTS ENDPOINT ==========
-    print(f"\n{Colors.YELLOW}[1] Testing Products Endpoints{Colors.END}")
-    
-    # Get all products (should return at least 12 seeded products)
-    data = test_get("products", 200, "GET /api/products - all products")
-    if data:
-        test_results.append(log_test("Products count >= 12", len(data.get('products', [])) >= 12, f"Found {len(data.get('products', []))} products"))
-        test_results.append(log_test("No _id field in products", all('_id' not in p for p in data.get('products', [])), "Checking NOID projection"))
-    
-    # Test filters
-    data = test_get("products?category=serum", 200, "GET /api/products?category=serum")
-    if data:
-        test_results.append(log_test("Filter by category=serum", all(p.get('category') == 'serum' for p in data.get('products', [])), f"Found {len(data.get('products', []))} serums"))
-    
-    data = test_get("products?concern=acne", 200, "GET /api/products?concern=acne")
-    if data:
-        test_results.append(log_test("Filter by concern=acne", all('acne' in p.get('concerns', []) for p in data.get('products', [])), f"Found {len(data.get('products', []))} products"))
-    
-    data = test_get("products?skin_type=oily", 200, "GET /api/products?skin_type=oily")
-    if data:
-        test_results.append(log_test("Filter by skin_type=oily", all('oily' in p.get('skin_types', []) for p in data.get('products', [])), f"Found {len(data.get('products', []))} products"))
-    
-    data = test_get("products?brand=eucerin", 200, "GET /api/products?brand=eucerin")
-    if data:
-        test_results.append(log_test("Filter by brand=eucerin", all(p.get('brand_slug') == 'eucerin' for p in data.get('products', [])), f"Found {len(data.get('products', []))} products"))
-    
-    data = test_get("products?german=true", 200, "GET /api/products?german=true")
-    if data:
-        test_results.append(log_test("Filter by german=true", all(p.get('german_made') == True for p in data.get('products', [])), f"Found {len(data.get('products', []))} products"))
-    
-    data = test_get("products?search=eucerin", 200, "GET /api/products?search=eucerin (case-insensitive)")
-    if data:
-        products = data.get('products', [])
-        test_results.append(log_test("Search by 'eucerin'", len(products) > 0, f"Found {len(products)} products"))
-    
-    # ========== 2. TEST PRODUCT DETAIL ENDPOINT ==========
-    print(f"\n{Colors.YELLOW}[2] Testing Product Detail Endpoints{Colors.END}")
-    
-    data = test_get("products/eucerin-dermopure-serum", 200, "GET /api/products/eucerin-dermopure-serum")
-    if data:
-        test_results.append(log_test("Product has ingredient_details array", 'ingredient_details' in data and isinstance(data['ingredient_details'], list), f"Found {len(data.get('ingredient_details', []))} ingredients"))
-        test_results.append(log_test("Product has brand object", 'brand' in data and isinstance(data['brand'], dict), f"Brand: {data.get('brand', {}).get('name', 'N/A')}"))
-        test_results.append(log_test("No _id in product detail", '_id' not in data, "NOID projection working"))
-    
-    test_get("products/nonexistent-product-xyz", 404, "GET /api/products/nonexistent → 404")
-    
-    # ========== 3. TEST INGREDIENTS ENDPOINTS ==========
-    print(f"\n{Colors.YELLOW}[3] Testing Ingredients Endpoints{Colors.END}")
-    
-    data = test_get("ingredients", 200, "GET /api/ingredients - all ingredients")
-    if data:
-        test_results.append(log_test("Ingredients count >= 12", len(data.get('ingredients', [])) >= 12, f"Found {len(data.get('ingredients', []))} ingredients"))
-        test_results.append(log_test("No _id field in ingredients", all('_id' not in i for i in data.get('ingredients', [])), "Checking NOID projection"))
-    
-    data = test_get("ingredients/niacinamide", 200, "GET /api/ingredients/niacinamide")
-    if data:
-        test_results.append(log_test("Ingredient has products array", 'products' in data and isinstance(data['products'], list), f"Found in {len(data.get('products', []))} products"))
-    
-    test_get("ingredients/unknown-ingredient-xyz", 404, "GET /api/ingredients/unknown → 404")
-    
-    # ========== 4. TEST BRANDS ENDPOINTS ==========
-    print(f"\n{Colors.YELLOW}[4] Testing Brands Endpoints{Colors.END}")
-    
-    data = test_get("brands", 200, "GET /api/brands - all brands")
-    if data:
-        test_results.append(log_test("Brands count >= 6", len(data.get('brands', [])) >= 6, f"Found {len(data.get('brands', []))} brands"))
-    
-    data = test_get("brands?german=true", 200, "GET /api/brands?german=true")
-    if data:
-        brands = data.get('brands', [])
-        test_results.append(log_test("German brands >= 5", len(brands) >= 5, f"Found {len(brands)} German brands"))
-        test_results.append(log_test("All brands are German", all(b.get('german') == True for b in brands), "Checking german flag"))
-    
-    data = test_get("brands/sebamed", 200, "GET /api/brands/sebamed")
-    if data:
-        test_results.append(log_test("Brand has products array", 'products' in data and isinstance(data['products'], list), f"Found {len(data.get('products', []))} products"))
-    
-    # ========== 5. TEST ARTICLES ENDPOINTS ==========
-    print(f"\n{Colors.YELLOW}[5] Testing Articles Endpoints{Colors.END}")
-    
-    data = test_get("articles", 200, "GET /api/articles - all articles")
-    if data:
-        articles = data.get('articles', [])
-        test_results.append(log_test("Articles count >= 4", len(articles) >= 4, f"Found {len(articles)} articles"))
-        # Check if sorted by published_at desc
-        if len(articles) >= 2:
-            test_results.append(log_test("Articles sorted by published_at desc", articles[0].get('published_at', '') >= articles[1].get('published_at', ''), "Checking sort order"))
-    
-    data = test_get("articles?category=learn", 200, "GET /api/articles?category=learn")
-    if data:
-        articles = data.get('articles', [])
-        test_results.append(log_test("Filter by category=learn", all(a.get('category') == 'learn' for a in articles), f"Found {len(articles)} articles"))
-    
-    data = test_get("articles/comprendre-peau-sensible", 200, "GET /api/articles/comprendre-peau-sensible")
-    if data:
-        test_results.append(log_test("Article has bilingual title", 'title' in data and 'fr' in data['title'] and 'en' in data['title'], "Checking bilingual fields"))
-    
-    # ========== 6. TEST COMPARE ENDPOINT ==========
-    print(f"\n{Colors.YELLOW}[6] Testing Compare Endpoint{Colors.END}")
-    
-    data = test_get("compare?a=weleda-skin-food&b=dr-hauschka-creme-jour-rose", 200, "GET /api/compare?a=weleda-skin-food&b=dr-hauschka-creme-jour-rose")
-    if data:
-        test_results.append(log_test("Compare returns product a", 'a' in data and data['a'].get('slug') == 'weleda-skin-food', "Product A present"))
-        test_results.append(log_test("Compare returns product b", 'b' in data and data['b'].get('slug') == 'dr-hauschka-creme-jour-rose', "Product B present"))
-        test_results.append(log_test("Compare returns common_ingredients", 'common_ingredients' in data and isinstance(data['common_ingredients'], list), f"Found {len(data.get('common_ingredients', []))} common ingredients"))
+    # ============================================================
+    # TEST 1: GET /api/products - 30 products with vertical field
+    # ============================================================
+    print("\n[TEST 1] GET /api/products - Total count and vertical field")
+    try:
+        resp = requests.get(f"{BASE_URL}/products", timeout=10)
+        runner.test("Status 200", resp.status_code == 200, f"Got {resp.status_code}")
         
-        # Check for specific shared ingredients
-        common = data.get('common_ingredients', [])
-        expected_common = ['glycerine', 'squalane', 'aloe-vera']
-        found_common = [ing for ing in expected_common if ing in common]
-        test_results.append(log_test("Common ingredients include glycerine, squalane, aloe-vera", len(found_common) >= 2, f"Found: {', '.join(found_common)}"))
-        
-        test_results.append(log_test("Compare returns ingredient_details", 'ingredient_details' in data and isinstance(data['ingredient_details'], list), f"Found {len(data.get('ingredient_details', []))} ingredient details"))
-    
-    test_get("compare?a=weleda-skin-food&b=nonexistent-product", 404, "GET /api/compare with invalid slug → 404")
-    
-    # ========== 7. TEST FINDER ENDPOINT ==========
-    print(f"\n{Colors.YELLOW}[7] Testing Product Finder Endpoint{Colors.END}")
-    
-    payload = {
-        "skin_type": "oily",
-        "concerns": ["acne", "oily"],
-        "budget": "low"
-    }
-    data = test_post("finder", payload, 200, "POST /api/finder with skin_type=oily, concerns=[acne,oily], budget=low")
-    if data:
-        results = data.get('results', [])
-        test_results.append(log_test("Finder returns results array", isinstance(results, list), f"Found {len(results)} results"))
-        test_results.append(log_test("Finder returns max 6 results", len(results) <= 6, f"Returned {len(results)} results"))
-        
-        if results:
-            test_results.append(log_test("Results sorted by score desc", all(results[i].get('score', 0) >= results[i+1].get('score', 0) for i in range(len(results)-1)), "Checking sort order"))
-            test_results.append(log_test("Each result has score", all('score' in r for r in results), "Checking score field"))
-            test_results.append(log_test("Each result has match_percent", all('match_percent' in r for r in results), "Checking match_percent field"))
-            test_results.append(log_test("Each result has matched_concerns", all('matched_concerns' in r for r in results), "Checking matched_concerns field"))
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
             
-            # Check budget low favors products <=15€
-            low_budget_products = [r for r in results if r.get('price_eur', 999) <= 15]
-            test_results.append(log_test("Budget low favors products <=15€", len(low_budget_products) > 0, f"Found {len(low_budget_products)} products <=15€"))
+            runner.test("Total products = 30", len(products) == 30, f"Got {len(products)} products")
+            
+            # Check all products have vertical field
+            all_have_vertical = all('vertical' in p for p in products)
+            runner.test("All products have 'vertical' field", all_have_vertical)
+            
+            # Count by vertical
+            skincare_count = sum(1 for p in products if p.get('vertical') == 'skincare')
+            hair_count = sum(1 for p in products if p.get('vertical') == 'hair')
+            wellness_count = sum(1 for p in products if p.get('vertical') == 'wellness')
+            
+            runner.test("Skincare products = 14", skincare_count == 14, f"Got {skincare_count}")
+            runner.test("Hair products = 8", hair_count == 8, f"Got {hair_count}")
+            runner.test("Wellness products = 8", wellness_count == 8, f"Got {wellness_count}")
+    except Exception as e:
+        runner.test("GET /api/products", False, str(e))
     
-    # Test with budget high
-    payload_high = {
-        "skin_type": "dry",
-        "concerns": ["aging", "dryness"],
-        "budget": "high"
-    }
-    data = test_post("finder", payload_high, 200, "POST /api/finder with budget=high")
-    if data:
-        results = data.get('results', [])
-        test_results.append(log_test("Finder works with budget=high", len(results) > 0, f"Found {len(results)} results"))
-    
-    # ========== 8. TEST LEADS ENDPOINT ==========
-    print(f"\n{Colors.YELLOW}[8] Testing Leads Endpoint{Colors.END}")
-    
-    lead_payload = {
-        "brand_name": "GlowLab Cosmetics",
-        "email": "contact@glowlab-cosmetics.com",
-        "contact_name": "Sophie Martin",
-        "message": "Interested in featuring our organic skincare line on your platform."
-    }
-    data = test_post("leads", lead_payload, 201, "POST /api/leads with valid data")
-    if data:
-        test_results.append(log_test("Lead created with uuid id", 'id' in data and len(data['id']) > 0, f"ID: {data.get('id', 'N/A')[:8]}..."))
-        test_lead_id = data.get('id')
-    
-    # Test missing email
-    test_post("leads", {"brand_name": "TestBrand"}, 400, "POST /api/leads without email → 400")
-    
-    # Test missing brand_name
-    test_post("leads", {"email": "test@test.com"}, 400, "POST /api/leads without brand_name → 400")
-    
-    # ========== 9. TEST ADMIN AUTH ==========
-    print(f"\n{Colors.YELLOW}[9] Testing Admin Authentication{Colors.END}")
-    
-    data = test_post("admin/login", {"password": ADMIN_PASSWORD}, 200, "POST /api/admin/login with correct password")
-    if data:
-        admin_token = data.get('token')
-        test_results.append(log_test("Login returns Bearer token", admin_token is not None and len(admin_token) > 0, f"Token: {admin_token[:8] if admin_token else 'N/A'}..."))
-    
-    test_post("admin/login", {"password": "wrongpassword"}, 401, "POST /api/admin/login with wrong password → 401")
-    
-    # ========== 10. TEST ADMIN PROTECTED ROUTES WITHOUT AUTH ==========
-    print(f"\n{Colors.YELLOW}[10] Testing Admin Protected Routes (No Auth){Colors.END}")
-    
-    test_get("admin/stats", 401, "GET /api/admin/stats without auth → 401")
-    test_get("admin/leads", 401, "GET /api/admin/leads without auth → 401")
-    test_post("admin/products", {"slug": "test"}, 401, "POST /api/admin/products without auth → 401")
-    
-    # ========== 11. TEST ADMIN PROTECTED ROUTES WITH AUTH ==========
-    if admin_token:
-        print(f"\n{Colors.YELLOW}[11] Testing Admin Protected Routes (With Auth){Colors.END}")
+    # ============================================================
+    # TEST 2: GET /api/products?vertical=hair - 8 hair products
+    # ============================================================
+    print("\n[TEST 2] GET /api/products?vertical=hair")
+    try:
+        resp = requests.get(f"{BASE_URL}/products?vertical=hair", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
         
-        headers = {"Authorization": f"Bearer {admin_token}"}
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            runner.test("Returns 8 products", len(products) == 8, f"Got {len(products)}")
+            
+            all_hair = all(p.get('vertical') == 'hair' for p in products)
+            runner.test("All products are vertical=hair", all_hair)
+    except Exception as e:
+        runner.test("GET /api/products?vertical=hair", False, str(e))
+    
+    # ============================================================
+    # TEST 3: GET /api/products?vertical=wellness - 8 wellness products
+    # ============================================================
+    print("\n[TEST 3] GET /api/products?vertical=wellness")
+    try:
+        resp = requests.get(f"{BASE_URL}/products?vertical=wellness", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
         
-        # Test stats
-        try:
-            url = f"{BASE_URL}/admin/stats"
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                log_test("GET /api/admin/stats with auth", True, f"Status: {response.status_code}")
-                test_results.append(log_test("Stats returns counts", all(k in data for k in ['products', 'brands', 'ingredients', 'articles', 'leads']), f"Products: {data.get('products')}, Brands: {data.get('brands')}, Ingredients: {data.get('ingredients')}, Articles: {data.get('articles')}, Leads: {data.get('leads')}"))
-            else:
-                log_test("GET /api/admin/stats with auth", False, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("GET /api/admin/stats with auth", False, f"Error: {str(e)}")
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            runner.test("Returns 8 products", len(products) == 8, f"Got {len(products)}")
+            
+            all_wellness = all(p.get('vertical') == 'wellness' for p in products)
+            runner.test("All products are vertical=wellness", all_wellness)
+    except Exception as e:
+        runner.test("GET /api/products?vertical=wellness", False, str(e))
+    
+    # ============================================================
+    # TEST 4: GET /api/products?vertical=skincare - 14 skincare products
+    # ============================================================
+    print("\n[TEST 4] GET /api/products?vertical=skincare")
+    try:
+        resp = requests.get(f"{BASE_URL}/products?vertical=skincare", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
         
-        # Test leads list
-        try:
-            url = f"{BASE_URL}/admin/leads"
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                leads = data.get('leads', [])
-                log_test("GET /api/admin/leads with auth", True, f"Found {len(leads)} leads")
-                # Check if our test lead is in the list
-                if test_lead_id:
-                    test_results.append(log_test("Test lead present in admin leads", any(l.get('id') == test_lead_id for l in leads), "Checking for created lead"))
-            else:
-                log_test("GET /api/admin/leads with auth", False, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("GET /api/admin/leads with auth", False, f"Error: {str(e)}")
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            runner.test("Returns 14 products", len(products) == 14, f"Got {len(products)}")
+            
+            all_skincare = all(p.get('vertical') == 'skincare' for p in products)
+            runner.test("All products are vertical=skincare", all_skincare)
+    except Exception as e:
+        runner.test("GET /api/products?vertical=skincare", False, str(e))
+    
+    # ============================================================
+    # TEST 5: Filter combinations
+    # ============================================================
+    print("\n[TEST 5] Filter combinations")
+    
+    # 5a: ?vertical=hair&concern=hair-loss
+    try:
+        resp = requests.get(f"{BASE_URL}/products?vertical=hair&concern=hair-loss", timeout=10)
+        runner.test("?vertical=hair&concern=hair-loss - Status 200", resp.status_code == 200)
         
-        # ========== 12. TEST ADMIN CRUD LIFECYCLE ==========
-        print(f"\n{Colors.YELLOW}[12] Testing Admin CRUD Lifecycle{Colors.END}")
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            # Should return alpecin products + weleda-huile-cheveux-romarin
+            runner.test("Returns hair-loss products", len(products) >= 3, f"Got {len(products)}")
+            
+            all_correct = all(
+                p.get('vertical') == 'hair' and 'hair-loss' in p.get('concerns', [])
+                for p in products
+            )
+            runner.test("All are hair + hair-loss concern", all_correct)
+            
+            # Check for specific products mentioned in review_request
+            slugs = [p.get('slug') for p in products]
+            has_alpecin = any('alpecin' in slug for slug in slugs)
+            has_weleda = 'weleda-huile-cheveux-romarin' in slugs
+            runner.test("Includes alpecin products", has_alpecin)
+            runner.test("Includes weleda-huile-cheveux-romarin", has_weleda)
+    except Exception as e:
+        runner.test("?vertical=hair&concern=hair-loss", False, str(e))
+    
+    # 5b: ?vertical=wellness&category=supplement
+    try:
+        resp = requests.get(f"{BASE_URL}/products?vertical=wellness&category=supplement", timeout=10)
+        runner.test("?vertical=wellness&category=supplement - Status 200", resp.status_code == 200)
         
-        # CREATE product
-        product_payload = {
-            "slug": "test-product-xyz-2025",
-            "name": "Test Hydrating Serum",
-            "brand_name": "TestLab",
-            "brand_slug": "testlab",
-            "category": "serum",
-            "price_eur": 10.0,
-            "rating": 4.0,
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            runner.test("Returns 5 supplements", len(products) == 5, f"Got {len(products)}")
+            
+            all_correct = all(
+                p.get('vertical') == 'wellness' and p.get('category') == 'supplement'
+                for p in products
+            )
+            runner.test("All are wellness + supplement", all_correct)
+    except Exception as e:
+        runner.test("?vertical=wellness&category=supplement", False, str(e))
+    
+    # 5c: ?concern=sleep
+    try:
+        resp = requests.get(f"{BASE_URL}/products?concern=sleep", timeout=10)
+        runner.test("?concern=sleep - Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            runner.test("Returns sleep products", len(products) >= 3, f"Got {len(products)}")
+            
+            all_have_sleep = all('sleep' in p.get('concerns', []) for p in products)
+            runner.test("All have sleep concern", all_have_sleep)
+            
+            # Should be wellness products
+            wellness_products = [p for p in products if p.get('vertical') == 'wellness']
+            runner.test("Sleep products are wellness vertical", len(wellness_products) >= 3)
+    except Exception as e:
+        runner.test("?concern=sleep", False, str(e))
+    
+    # 5d: ?vertical=hair&category=shampoo
+    try:
+        resp = requests.get(f"{BASE_URL}/products?vertical=hair&category=shampoo", timeout=10)
+        runner.test("?vertical=hair&category=shampoo - Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get('products', [])
+            
+            runner.test("Returns 5 shampoos", len(products) == 5, f"Got {len(products)}")
+            
+            all_correct = all(
+                p.get('vertical') == 'hair' and p.get('category') == 'shampoo'
+                for p in products
+            )
+            runner.test("All are hair + shampoo", all_correct)
+    except Exception as e:
+        runner.test("?vertical=hair&category=shampoo", False, str(e))
+    
+    # ============================================================
+    # TEST 6: GET /api/products/alpecin-caffeine-shampoo-c1
+    # ============================================================
+    print("\n[TEST 6] GET /api/products/alpecin-caffeine-shampoo-c1")
+    try:
+        resp = requests.get(f"{BASE_URL}/products/alpecin-caffeine-shampoo-c1", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            product = resp.json()
+            
+            runner.test("Product has ingredient_details array", 'ingredient_details' in product)
+            
+            if 'ingredient_details' in product:
+                ingredient_slugs = [ing.get('slug') for ing in product['ingredient_details']]
+                runner.test("ingredient_details contains 'cafeine'", 'cafeine' in ingredient_slugs, 
+                           f"Got: {ingredient_slugs}")
+            
+            runner.test("Product has brand object", 'brand' in product and isinstance(product['brand'], dict))
+            
+            if 'brand' in product and isinstance(product['brand'], dict):
+                runner.test("Brand slug is 'alpecin'", product['brand'].get('slug') == 'alpecin',
+                           f"Got: {product['brand'].get('slug')}")
+    except Exception as e:
+        runner.test("GET /api/products/alpecin-caffeine-shampoo-c1", False, str(e))
+    
+    # ============================================================
+    # TEST 7: GET /api/brands - 11 brands with manufacturer & certifications
+    # ============================================================
+    print("\n[TEST 7] GET /api/brands - 11 brands with enriched fields")
+    try:
+        resp = requests.get(f"{BASE_URL}/brands", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            brands = data.get('brands', [])
+            
+            runner.test("Total brands = 11", len(brands) == 11, f"Got {len(brands)}")
+            
+            # Check all brands have manufacturer and certifications
+            all_have_manufacturer = all('manufacturer' in b for b in brands)
+            runner.test("All brands have 'manufacturer' field", all_have_manufacturer)
+            
+            all_have_certifications = all('certifications' in b and isinstance(b['certifications'], list) 
+                                         for b in brands)
+            runner.test("All brands have 'certifications' array", all_have_certifications)
+            
+            # Check for new brands
+            brand_slugs = [b.get('slug') for b in brands]
+            new_brands = ['alpecin', 'schwarzkopf', 'doppelherz', 'kneipp', 'salus']
+            for new_brand in new_brands:
+                runner.test(f"New brand '{new_brand}' exists", new_brand in brand_slugs)
+    except Exception as e:
+        runner.test("GET /api/brands", False, str(e))
+    
+    # ============================================================
+    # TEST 8: GET /api/brands/doppelherz - has products array
+    # ============================================================
+    print("\n[TEST 8] GET /api/brands/doppelherz")
+    try:
+        resp = requests.get(f"{BASE_URL}/brands/doppelherz", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            brand = resp.json()
+            
+            runner.test("Brand has products array", 'products' in brand and isinstance(brand['products'], list))
+            
+            if 'products' in brand:
+                products = brand['products']
+                runner.test("Doppelherz has 3 products", len(products) == 3, f"Got {len(products)}")
+                
+                # All should be supplements
+                all_supplements = all(p.get('category') == 'supplement' for p in products)
+                runner.test("All doppelherz products are supplements", all_supplements)
+    except Exception as e:
+        runner.test("GET /api/brands/doppelherz", False, str(e))
+    
+    # ============================================================
+    # TEST 9: GET /api/ingredients - 24 ingredients
+    # ============================================================
+    print("\n[TEST 9] GET /api/ingredients - 24 ingredients")
+    try:
+        resp = requests.get(f"{BASE_URL}/ingredients", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            ingredients = data.get('ingredients', [])
+            
+            runner.test("Total ingredients = 24", len(ingredients) == 24, f"Got {len(ingredients)}")
+    except Exception as e:
+        runner.test("GET /api/ingredients", False, str(e))
+    
+    # ============================================================
+    # TEST 10: GET /api/ingredients/melatonine - has regulatory fields
+    # ============================================================
+    print("\n[TEST 10] GET /api/ingredients/melatonine")
+    try:
+        resp = requests.get(f"{BASE_URL}/ingredients/melatonine", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            ingredient = resp.json()
+            
+            runner.test("Has regulatory object", 'regulatory' in ingredient and isinstance(ingredient['regulatory'], dict))
+            
+            if 'regulatory' in ingredient:
+                regulatory = ingredient['regulatory']
+                runner.test("Has regulatory.fr", 'fr' in regulatory and isinstance(regulatory['fr'], str))
+                runner.test("Has regulatory.en", 'en' in regulatory and isinstance(regulatory['en'], str))
+    except Exception as e:
+        runner.test("GET /api/ingredients/melatonine", False, str(e))
+    
+    # ============================================================
+    # TEST 11: GET /api/ingredients/cafeine - products array includes alpecin
+    # ============================================================
+    print("\n[TEST 11] GET /api/ingredients/cafeine")
+    try:
+        resp = requests.get(f"{BASE_URL}/ingredients/cafeine", timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            ingredient = resp.json()
+            
+            runner.test("Has products array", 'products' in ingredient and isinstance(ingredient['products'], list))
+            
+            if 'products' in ingredient:
+                products = ingredient['products']
+                product_slugs = [p.get('slug') for p in products]
+                
+                has_alpecin = any('alpecin' in slug for slug in product_slugs)
+                runner.test("Products array includes alpecin products", has_alpecin,
+                           f"Got products: {product_slugs}")
+    except Exception as e:
+        runner.test("GET /api/ingredients/cafeine", False, str(e))
+    
+    # ============================================================
+    # TEST 12: POST /api/finder with vertical=skincare
+    # ============================================================
+    print("\n[TEST 12] POST /api/finder with vertical=skincare")
+    try:
+        payload = {
+            "skin_type": "oily",
             "concerns": ["acne"],
-            "skin_types": ["oily"],
-            "ingredients": ["niacinamide"],
-            "description": {"fr": "Sérum test", "en": "Test serum"},
-            "german_made": False
+            "budget": "mid",
+            "vertical": "skincare"
         }
+        resp = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
+        runner.test("Status 200", resp.status_code == 200)
         
-        try:
-            url = f"{BASE_URL}/admin/products"
-            response = requests.post(url, json=product_payload, headers=headers, timeout=10)
-            if response.status_code == 201:
-                data = response.json()
-                test_product_id = data.get('id')
-                log_test("POST /api/admin/products - create product", True, f"Created with ID: {test_product_id[:8] if test_product_id else 'N/A'}...")
-                test_results.append(log_test("Created product has uuid id", test_product_id is not None, f"ID: {test_product_id[:8] if test_product_id else 'N/A'}..."))
-            else:
-                log_test("POST /api/admin/products - create product", False, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("POST /api/admin/products - create product", False, f"Error: {str(e)}")
-        
-        # Test duplicate slug → 409
-        try:
-            url = f"{BASE_URL}/admin/products"
-            response = requests.post(url, json=product_payload, headers=headers, timeout=10)
-            passed = response.status_code == 409
-            log_test("POST /api/admin/products with duplicate slug → 409", passed, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("POST /api/admin/products with duplicate slug → 409", False, f"Error: {str(e)}")
-        
-        # Test missing slug → 400
-        try:
-            url = f"{BASE_URL}/admin/products"
-            response = requests.post(url, json={"name": "Test"}, headers=headers, timeout=10)
-            passed = response.status_code == 400
-            log_test("POST /api/admin/products without slug → 400", passed, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("POST /api/admin/products without slug → 400", False, f"Error: {str(e)}")
-        
-        # UPDATE product
-        if test_product_id:
-            update_payload = {"name": "Updated Test Serum Pro"}
-            try:
-                url = f"{BASE_URL}/admin/products/{test_product_id}"
-                response = requests.put(url, json=update_payload, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    log_test("PUT /api/admin/products/{id} - update product", True, f"Updated name: {data.get('name')}")
-                    test_results.append(log_test("Product name updated", data.get('name') == "Updated Test Serum Pro", f"New name: {data.get('name')}"))
-                else:
-                    log_test("PUT /api/admin/products/{id} - update product", False, f"Status: {response.status_code}")
-            except Exception as e:
-                log_test("PUT /api/admin/products/{id} - update product", False, f"Error: {str(e)}")
+        if resp.status_code == 200:
+            data = resp.json()
             
-            # Verify update via public endpoint
-            data = test_get(f"products/test-product-xyz-2025", 200, "GET /api/products/test-product-xyz-2025 - verify update")
-            if data:
-                test_results.append(log_test("Public endpoint reflects update", data.get('name') == "Updated Test Serum Pro", f"Name: {data.get('name')}"))
-        
-        # DELETE product
-        if test_product_id:
-            try:
-                url = f"{BASE_URL}/admin/products/{test_product_id}"
-                response = requests.delete(url, headers=headers, timeout=10)
-                passed = response.status_code == 200
-                log_test("DELETE /api/admin/products/{id} - delete product", passed, f"Status: {response.status_code}")
-            except Exception as e:
-                log_test("DELETE /api/admin/products/{id} - delete product", False, f"Error: {str(e)}")
+            runner.test("Has routine object", 'routine' in data)
             
-            # Test delete again → 404
+            if 'routine' in data:
+                routine = data['routine']
+                
+                runner.test("Routine has morning array", 'morning' in routine and isinstance(routine['morning'], list))
+                runner.test("Routine has evening array", 'evening' in routine and isinstance(routine['evening'], list))
+                runner.test("Routine has warnings object", 'warnings' in routine)
+                
+                # Check morning routine structure
+                if 'morning' in routine:
+                    morning = routine['morning']
+                    runner.test("Morning routine has steps", len(morning) > 0)
+                    
+                    if len(morning) > 0:
+                        # Check for expected categories
+                        categories = [step.get('category') for step in morning]
+                        runner.test("Morning has cleanser", 'cleanser' in categories)
+                        runner.test("Morning has serum", 'serum' in categories)
+                        runner.test("Morning has moisturizer", 'moisturizer' in categories)
+                        runner.test("Morning has sunscreen", 'sunscreen' in categories)
+                        
+                        # Check all products are skincare
+                        all_skincare = all(
+                            step.get('product', {}).get('vertical') == 'skincare'
+                            for step in morning
+                        )
+                        runner.test("All morning products are vertical=skincare", all_skincare)
+                        
+                        # Check NO hair/wellness products
+                        no_shampoo = all(step.get('category') != 'shampoo' for step in morning)
+                        runner.test("Morning routine has NO shampoo", no_shampoo)
+                
+                # Check evening routine
+                if 'evening' in routine:
+                    evening = routine['evening']
+                    runner.test("Evening routine has steps", len(evening) > 0)
+                    
+                    if len(evening) > 0:
+                        # Check NO sunscreen in evening
+                        categories = [step.get('category') for step in evening]
+                        runner.test("Evening has NO sunscreen", 'sunscreen' not in categories)
+                        
+                        # Check all products are skincare
+                        all_skincare = all(
+                            step.get('product', {}).get('vertical') == 'skincare'
+                            for step in evening
+                        )
+                        runner.test("All evening products are vertical=skincare", all_skincare)
+            
+            # Check results array
+            runner.test("Has results array", 'results' in data and isinstance(data['results'], list))
+            
+            if 'results' in data:
+                results = data['results']
+                
+                # All results should be skincare
+                all_skincare = all(p.get('vertical') == 'skincare' for p in results)
+                runner.test("All results are vertical=skincare", all_skincare)
+                
+                # Check NO hair/wellness products in results
+                no_hair_wellness = all(
+                    p.get('category') not in ['shampoo', 'conditioner', 'hair-treatment', 'scalp-serum', 
+                                              'supplement', 'tea', 'bath-body']
+                    for p in results
+                )
+                runner.test("Results have NO hair/wellness products", no_hair_wellness)
+    except Exception as e:
+        runner.test("POST /api/finder with vertical=skincare", False, str(e))
+    
+    # ============================================================
+    # TEST 13: REGRESSIONS
+    # ============================================================
+    print("\n[TEST 13] Regression tests")
+    
+    # 13a: GET /api/compare
+    try:
+        resp = requests.get(f"{BASE_URL}/compare?a=weleda-skin-food&b=dr-hauschka-creme-jour-rose", timeout=10)
+        runner.test("Compare endpoint works", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            runner.test("Compare has product a", 'a' in data)
+            runner.test("Compare has product b", 'b' in data)
+            runner.test("Compare has common_ingredients", 'common_ingredients' in data)
+    except Exception as e:
+        runner.test("GET /api/compare", False, str(e))
+    
+    # 13b: POST /api/leads
+    try:
+        payload = {
+            "brand_name": "Test Brand GmbH",
+            "email": "contact@testbrand.de",
+            "contact_name": "Hans Mueller",
+            "message": "Interested in partnership"
+        }
+        resp = requests.post(f"{BASE_URL}/leads", json=payload, timeout=10)
+        runner.test("Leads endpoint works", resp.status_code == 201)
+        
+        if resp.status_code == 201:
+            lead = resp.json()
+            runner.test("Lead has id", 'id' in lead)
+    except Exception as e:
+        runner.test("POST /api/leads", False, str(e))
+    
+    # 13c: POST /api/admin/login
+    try:
+        payload = {"password": "admin123"}
+        resp = requests.post(f"{BASE_URL}/admin/login", json=payload, timeout=10)
+        runner.test("Admin login works", resp.status_code == 200)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            runner.test("Login returns token", 'token' in data)
+            if 'token' in data:
+                runner.token = data['token']
+    except Exception as e:
+        runner.test("POST /api/admin/login", False, str(e))
+    
+    # 13d: GET /api/admin/stats
+    if runner.token:
+        try:
+            headers = {"Authorization": f"Bearer {runner.token}"}
+            resp = requests.get(f"{BASE_URL}/admin/stats", headers=headers, timeout=10)
+            runner.test("Admin stats works", resp.status_code == 200)
+            
+            if resp.status_code == 200:
+                stats = resp.json()
+                runner.test("Stats: products = 30", stats.get('products') == 30, f"Got {stats.get('products')}")
+                runner.test("Stats: brands = 11", stats.get('brands') == 11, f"Got {stats.get('brands')}")
+                runner.test("Stats: ingredients = 24", stats.get('ingredients') == 24, f"Got {stats.get('ingredients')}")
+                runner.test("Stats: articles = 4", stats.get('articles') == 4, f"Got {stats.get('articles')}")
+        except Exception as e:
+            runner.test("GET /api/admin/stats", False, str(e))
+    
+    # 13e: Admin CRUD lifecycle on products
+    if runner.token:
+        headers = {"Authorization": f"Bearer {runner.token}"}
+        
+        # CREATE test product
+        try:
+            payload = {
+                "slug": "test-product-v2-catalog",
+                "name": "Test Product V2",
+                "brand_slug": "eucerin",
+                "brand_name": "Eucerin",
+                "vertical": "skincare",
+                "category": "serum",
+                "price_eur": 19.99,
+                "rating": 4.5,
+                "image": "https://example.com/test.jpg",
+                "german_made": True,
+                "concerns": ["acne"],
+                "skin_types": ["oily"],
+                "ingredients": ["niacinamide"],
+                "description": {"fr": "Test FR", "en": "Test EN"}
+            }
+            resp = requests.post(f"{BASE_URL}/admin/products", json=payload, headers=headers, timeout=10)
+            runner.test("Admin CREATE product works", resp.status_code == 201)
+            
+            if resp.status_code == 201:
+                product = resp.json()
+                runner.test("Created product has id", 'id' in product)
+                if 'id' in product:
+                    runner.test_product_id = product['id']
+        except Exception as e:
+            runner.test("Admin CREATE product", False, str(e))
+        
+        # UPDATE test product
+        if runner.test_product_id:
             try:
-                url = f"{BASE_URL}/admin/products/{test_product_id}"
-                response = requests.delete(url, headers=headers, timeout=10)
-                passed = response.status_code == 404
-                log_test("DELETE /api/admin/products/{id} again → 404", passed, f"Status: {response.status_code}")
+                payload = {"name": "Test Product V2 Updated"}
+                resp = requests.put(f"{BASE_URL}/admin/products/{runner.test_product_id}", 
+                                   json=payload, headers=headers, timeout=10)
+                runner.test("Admin UPDATE product works", resp.status_code == 200)
             except Exception as e:
-                log_test("DELETE /api/admin/products/{id} again → 404", False, f"Error: {str(e)}")
+                runner.test("Admin UPDATE product", False, str(e))
         
-        # ========== 13. TEST CRUD FOR OTHER COLLECTIONS ==========
-        print(f"\n{Colors.YELLOW}[13] Testing CRUD for Brands, Ingredients, Articles{Colors.END}")
+        # DELETE test product (cleanup)
+        if runner.test_product_id:
+            try:
+                resp = requests.delete(f"{BASE_URL}/admin/products/{runner.test_product_id}", 
+                                      headers=headers, timeout=10)
+                runner.test("Admin DELETE product works", resp.status_code == 200)
+            except Exception as e:
+                runner.test("Admin DELETE product", False, str(e))
         
-        # Test brand CRUD
-        brand_payload = {
-            "slug": "test-brand-xyz-2025",
-            "name": "TestBrand GmbH",
-            "country": "Allemagne",
-            "german": True,
-            "founded": 2025,
-            "city": "Berlin",
-            "website": "https://testbrand.com",
-            "description": {"fr": "Marque test", "en": "Test brand"}
-        }
-        
+        # 13f: Verify 401 without token
         try:
-            url = f"{BASE_URL}/admin/brands"
-            response = requests.post(url, json=brand_payload, headers=headers, timeout=10)
-            if response.status_code == 201:
-                data = response.json()
-                test_brand_id = data.get('id')
-                log_test("POST /api/admin/brands - create brand", True, f"Created with ID: {test_brand_id[:8] if test_brand_id else 'N/A'}...")
-                
-                # Delete brand
-                url = f"{BASE_URL}/admin/brands/{test_brand_id}"
-                response = requests.delete(url, headers=headers, timeout=10)
-                log_test("DELETE /api/admin/brands/{id} - delete brand", response.status_code == 200, f"Status: {response.status_code}")
-            else:
-                log_test("POST /api/admin/brands - create brand", False, f"Status: {response.status_code}")
+            resp = requests.get(f"{BASE_URL}/admin/stats", timeout=10)
+            runner.test("Admin endpoints return 401 without token", resp.status_code == 401)
         except Exception as e:
-            log_test("Brand CRUD test", False, f"Error: {str(e)}")
-        
-        # Test ingredient CRUD
-        ingredient_payload = {
-            "slug": "test-ingredient-xyz-2025",
-            "name": "Test Peptide",
-            "inci": "Palmitoyl Tripeptide-1",
-            "safety": "green",
-            "evidence": "moderate",
-            "comedogenic": 0,
-            "good_for": ["aging"],
-            "description": {"fr": "Peptide test", "en": "Test peptide"},
-            "benefits": {"fr": ["Test"], "en": ["Test"]}
-        }
-        
-        try:
-            url = f"{BASE_URL}/admin/ingredients"
-            response = requests.post(url, json=ingredient_payload, headers=headers, timeout=10)
-            if response.status_code == 201:
-                data = response.json()
-                test_ingredient_id = data.get('id')
-                log_test("POST /api/admin/ingredients - create ingredient", True, f"Created with ID: {test_ingredient_id[:8] if test_ingredient_id else 'N/A'}...")
-                
-                # Delete ingredient
-                url = f"{BASE_URL}/admin/ingredients/{test_ingredient_id}"
-                response = requests.delete(url, headers=headers, timeout=10)
-                log_test("DELETE /api/admin/ingredients/{id} - delete ingredient", response.status_code == 200, f"Status: {response.status_code}")
-            else:
-                log_test("POST /api/admin/ingredients - create ingredient", False, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("Ingredient CRUD test", False, f"Error: {str(e)}")
-        
-        # Test article CRUD
-        article_payload = {
-            "slug": "test-article-xyz-2025",
-            "category": "learn",
-            "image": "https://example.com/image.jpg",
-            "published_at": "2025-06-15",
-            "title": {"fr": "Article test", "en": "Test article"},
-            "excerpt": {"fr": "Extrait test", "en": "Test excerpt"},
-            "content": {"fr": "Contenu test", "en": "Test content"}
-        }
-        
-        try:
-            url = f"{BASE_URL}/admin/articles"
-            response = requests.post(url, json=article_payload, headers=headers, timeout=10)
-            if response.status_code == 201:
-                data = response.json()
-                test_article_id = data.get('id')
-                log_test("POST /api/admin/articles - create article", True, f"Created with ID: {test_article_id[:8] if test_article_id else 'N/A'}...")
-                
-                # Delete article
-                url = f"{BASE_URL}/admin/articles/{test_article_id}"
-                response = requests.delete(url, headers=headers, timeout=10)
-                log_test("DELETE /api/admin/articles/{id} - delete article", response.status_code == 200, f"Status: {response.status_code}")
-            else:
-                log_test("POST /api/admin/articles - create article", False, f"Status: {response.status_code}")
-        except Exception as e:
-            log_test("Article CRUD test", False, f"Error: {str(e)}")
+            runner.test("Admin 401 check", False, str(e))
     
-    # ========== SUMMARY ==========
-    print(f"\n{Colors.BLUE}{'='*80}{Colors.END}")
-    print(f"{Colors.BLUE}Test Summary{Colors.END}")
-    print(f"{Colors.BLUE}{'='*80}{Colors.END}")
-    
-    passed = sum(1 for r in test_results if r)
-    total = len(test_results)
-    percentage = (passed / total * 100) if total > 0 else 0
-    
-    print(f"\nTotal Tests: {total}")
-    print(f"{Colors.GREEN}Passed: {passed}{Colors.END}")
-    print(f"{Colors.RED}Failed: {total - passed}{Colors.END}")
-    print(f"Success Rate: {percentage:.1f}%\n")
-    
-    if percentage == 100:
-        print(f"{Colors.GREEN}✓ All backend API tests passed!{Colors.END}\n")
-        return 0
-    else:
-        print(f"{Colors.YELLOW}⚠ Some tests failed. Review the output above.{Colors.END}\n")
-        return 1
+    # ============================================================
+    # FINAL SUMMARY
+    # ============================================================
+    runner.summary()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
