@@ -10,7 +10,7 @@ import sys
 from typing import Dict, Any, Optional
 
 # Load base URL from environment
-BASE_URL = "https://ingredient-db.preview.emergentagent.com/api"
+BASE_URL = "https://git-pull-install.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "admin123"
 
 class Colors:

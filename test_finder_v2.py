@@ -8,7 +8,7 @@ import requests
 import json
 import sys
 
-BASE_URL = "https://ingredient-db.preview.emergentagent.com/api"
+BASE_URL = "https://git-pull-install.preview.emergentagent.com/api"
 
 class Colors:
     GREEN = '\033[92m'

@@ -6,7 +6,7 @@ Additional test to verify pair conflicts can be triggered
 import requests
 import json
 
-BASE_URL = "https://ingredient-db.preview.emergentagent.com/api"
+BASE_URL = "https://git-pull-install.preview.emergentagent.com/api"
 
 def test_profile(profile_name, payload):
     print(f"\n{'='*80}")
