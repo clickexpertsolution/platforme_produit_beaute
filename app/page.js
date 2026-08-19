@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
-  BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, Beaker, Mail
+  BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -875,6 +875,27 @@ const FinderView = ({ lang, nav }) => {
                       )
                     })}
                   </div>
+                  {(routine?.warnings?.[section.key] || []).map((w, wi) => (
+                    <div key={wi} data-testid={`routine-warning-${section.key}-${wi}`}
+                      className={`mt-3 rounded-xl border p-3 flex gap-2.5 ${w.severity === 'high' ? 'bg-red-50 border-red-200' : w.severity === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
+                      <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${w.severity === 'high' ? 'text-red-600' : w.severity === 'medium' ? 'text-amber-600' : 'text-stone-500'}`} />
+                      <div>
+                        <p className={`text-xs font-bold ${w.severity === 'high' ? 'text-red-800' : w.severity === 'medium' ? 'text-amber-800' : 'text-stone-700'}`}>
+                          {w.title?.[lang]}
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide font-bold ${w.severity === 'high' ? 'bg-red-200 text-red-800' : w.severity === 'medium' ? 'bg-amber-200 text-amber-800' : 'bg-stone-200 text-stone-600'}`}>
+                            {w.severity === 'high' ? (lang === 'fr' ? 'Risque élevé' : 'High risk') : w.severity === 'medium' ? (lang === 'fr' ? 'Attention' : 'Caution') : 'Info'}
+                          </span>
+                        </p>
+                        <p className="text-xs mt-1 text-stone-600 leading-relaxed">{w.message?.[lang]}</p>
+                        <p className="text-[11px] text-stone-400 mt-1">{(w.products || []).join(' + ')}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {(routine?.warnings?.[section.key] || []).length === 0 && (
+                    <p data-testid={`routine-noconflict-${section.key}`} className="mt-3 text-xs text-emerald-700 flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? "Aucun conflit d'actifs détecté dans cette routine" : 'No active-ingredient conflicts detected in this routine'}
+                    </p>
+                  )}
                   <p className="text-xs text-stone-500 mt-3 text-right">
                     {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-bold text-stone-800">
                       {(routine?.[section.key] || []).reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €

@@ -267,3 +267,25 @@ agent_communication:
     message: "Feature update: finder now returns step-by-step routine. Please re-test ONLY POST /api/finder (routine structure, ordering, evening serum different from morning when 2+ serums match, alternatives excluded from routine, legacy results still present). Do NOT test frontend."
   - agent: "testing"
     message: "✓ Finder v2 testing complete - ALL 72 tests passed (100% success rate). The upgraded POST /api/finder endpoint is working perfectly with the new routine structure. Morning routine includes sunscreen (order 1-4), evening routine excludes sunscreen (order 1-3), evening serum differs from morning serum when multiple serums exist, alternatives are properly excluded from routine, and legacy compatibility (results/total) is maintained. All profiles tested successfully. No issues found."
+
+backend:
+  - task: "Finder v3: conflict detection - routine.warnings {morning[], evening[]} with pair conflicts (retinol+acide-salicylique high, retinol+vitamine-c medium, acide-salicylique+vitamine-c medium) and duplicate-active warnings (acide-salicylique/retinol/vitamine-c in 2+ products of same session). Warning shape: {type, severity, title{fr,en}, message{fr,en}, products[]} sorted high>medium>low. Added 2 products: eucerin-vitamin-c-booster, borlind-retinol-nature-serum (total now 14)."
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Smoke-tested: oily/acne/pigmentation profile triggers duplicate salicylic acid warning in morning (Clear Face Gel + DermoPure)."
+      - working: true
+        agent: "testing"
+        comment: "✓ PASSED - All 31 tests passed (100% success rate). Finder v3 conflict detection working perfectly. (1) Regression: GET /api/products returns 14 products (2 new: eucerin-vitamin-c-booster with vitamine-c, borlind-retinol-nature-serum with retinol). (2) GET /api/products/borlind-retinol-nature-serum returns proper ingredient_details with retinol. (3) Duplicate salicylic acid warning correctly triggered for oily/acne/pigmentation/high profile in morning routine (Clear Face Gel Nettoyant + DermoPure Sérum Triple Action both contain acide-salicylique). (4) Warning structure validated: type='duplicate', severity='medium', bilingual title{fr,en}, bilingual message{fr,en}, products array with both product names. (5) Both products verified to actually contain acide-salicylique ingredient. (6) Warnings arrays present for all profiles (empty arrays when no conflicts). (7) Empty body {} returns 200 with proper warnings structure (no crash). (8) Routine structure regression: morning 1-4 steps (cleanser→serum→moisturizer→sunscreen), evening 1-3 steps (NO sunscreen), alternatives array, legacy results/total fields all present. (9) Pair conflict detection logic verified correct (checks for both actives in same session). Note: Pair conflicts not triggered in practice because scoring algorithm naturally avoids them (e.g., retinol and vitamin C are both serums, only one serum selected per session), but detection logic is implemented correctly and would fire if such combinations occurred. Conflict detection feature working as designed."
+
+agent_communication:
+  - agent: "main"
+    message: "Feature: ingredient conflict alerts in finder routine. Re-test ONLY POST /api/finder warnings + quick products regression (now 14 products). Do NOT test frontend."
+  - agent: "testing"
+    message: "✓ Finder v3 conflict detection testing complete - ALL 31 tests passed (100% success rate). The ingredient conflict detection feature is working perfectly. Duplicate warnings are firing correctly (e.g., duplicate salicylic acid for oily/acne profiles). Warning structure is correct with all required fields (type, severity, bilingual title/message, products array). Warnings sorted by severity (high>medium>low). Regression tests passed: 14 products total, new products exist with correct ingredients, routine structure unchanged. Pair conflict detection logic is implemented correctly but not triggered in practice because the scoring algorithm naturally avoids selecting conflicting actives in the same session (e.g., retinol and vitamin C are both serums, only one serum per session). Feature is production-ready."

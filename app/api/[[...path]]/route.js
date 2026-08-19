@@ -80,6 +80,8 @@ const SEED_PRODUCTS = [
   { slug: 'weleda-lotion-nettoyante-douce', name: 'Lait Nettoyant Doux', brand_slug: 'weleda', brand_name: 'Weleda', category: 'cleanser', price_eur: 9.9, rating: 4.3, image: IMG.p2, german_made: false, concerns: ['sensitive', 'dryness'], skin_types: ['dry', 'sensitive', 'normal'], ingredients: ['aloe-vera', 'glycerine'], affiliate_url: 'https://www.weleda.com', description: { fr: "Lait nettoyant naturel qui élimine impuretés et maquillage sans agresser. Aux extraits de pivoine et hamamélis, certifié NATRUE.", en: "Natural cleansing milk that removes impurities and makeup without stripping. With peony and witch hazel extracts, NATRUE certified." } },
   { slug: 'dr-hauschka-serum-nuit', name: 'Sérum de Nuit Régénérant', brand_slug: 'dr-hauschka', brand_name: 'Dr. Hauschka', category: 'serum', price_eur: 32.0, rating: 4.1, image: IMG.p1, german_made: true, concerns: ['aging', 'sensitive'], skin_types: ['normal', 'dry', 'sensitive'], ingredients: ['aloe-vera', 'glycerine'], affiliate_url: 'https://www.drhauschka.com', description: { fr: "Sérum de nuit bio qui soutient le renouvellement naturel de la peau pendant le sommeil. Sans huile, aux extraits de cynorrhodon et d'argousier.", en: "Organic night serum that supports the skin's natural renewal during sleep. Oil-free, with rosehip and sea buckthorn extracts." } },
   { slug: 'nivea-sun-uv-face-spf50', name: 'Sun UV Face Sensitive SPF 50', brand_slug: 'nivea', brand_name: 'NIVEA', category: 'sunscreen', price_eur: 12.5, rating: 4.2, image: IMG.p5, german_made: true, concerns: ['sensitive'], skin_types: ['sensitive', 'normal', 'dry', 'combination'], ingredients: ['glycerine', 'panthenol'], affiliate_url: 'https://www.nivea.com', description: { fr: "Protection solaire visage SPF 50 pour peaux sensibles : 0% parfum, 0% alcool. Texture légère non grasse, résistante à l'eau.", en: "SPF 50 face sun protection for sensitive skin: 0% fragrance, 0% alcohol. Lightweight non-greasy texture, water resistant." } },
+  { slug: 'eucerin-vitamin-c-booster', name: 'Hyaluron-Filler Vitamine C Booster', brand_slug: 'eucerin', brand_name: 'Eucerin', category: 'serum', price_eur: 22.9, rating: 4.5, image: IMG.p7, german_made: true, concerns: ['aging', 'pigmentation'], skin_types: ['normal', 'dry', 'combination', 'oily'], ingredients: ['vitamine-c', 'acide-hyaluronique', 'glycerine'], affiliate_url: 'https://www.eucerin.com', description: { fr: "Booster fraîchement activé à 10% de vitamine C pure et acide hyaluronique. Éclat immédiat, teint plus uniforme en 7 jours.", en: "Freshly activated booster with 10% pure vitamin C and hyaluronic acid. Immediate glow, more even skin tone in 7 days." } },
+  { slug: 'borlind-retinol-nature-serum', name: 'Sérum Rétinol Nature', brand_slug: 'annemarie-borlind', brand_name: 'Annemarie Börlind', category: 'serum', price_eur: 39.9, rating: 4.2, image: IMG.p6, german_made: true, concerns: ['aging', 'pigmentation'], skin_types: ['normal', 'dry', 'combination'], ingredients: ['retinol', 'squalane', 'glycerine'], affiliate_url: 'https://www.boerlind.com', description: { fr: "Sérum de nuit au rétinol végétal stabilisé et squalane. Lisse les rides et affine le grain de peau. À introduire progressivement, toujours avec un SPF le matin.", en: "Night serum with stabilized plant-based retinol and squalane. Smooths wrinkles and refines skin texture. Introduce gradually, always with SPF in the morning." } },
 ]
 
 const SEED_ARTICLES = [
@@ -90,7 +92,6 @@ const SEED_ARTICLES = [
 ]
 
 async function seedIfEmpty(database) {
-  // Atomic lock via meta collection to avoid concurrent seeding race condition
   const existing = await database.collection('meta').findOneAndUpdate(
     { key: 'seeded' },
     { $setOnInsert: { key: 'seeded', at: new Date().toISOString() } },
@@ -112,6 +113,83 @@ async function requireAdmin(request, database) {
 }
 
 const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles']
+
+// ============ INGREDIENT CONFLICT RULES ============
+const INGREDIENT_CONFLICTS = [
+  {
+    pair: ['retinol', 'acide-salicylique'], severity: 'high',
+    title: { fr: 'Rétinol + Acide salicylique', en: 'Retinol + Salicylic acid' },
+    message: {
+      fr: "Risque élevé d'irritation et de dessèchement lorsqu'ils sont appliqués dans la même session. Alternez : BHA un soir, rétinol le soir suivant.",
+      en: 'High risk of irritation and dryness when applied in the same session. Alternate: BHA one evening, retinol the next.',
+    },
+  },
+  {
+    pair: ['retinol', 'vitamine-c'], severity: 'medium',
+    title: { fr: 'Rétinol + Vitamine C pure', en: 'Retinol + Pure vitamin C' },
+    message: {
+      fr: "Leurs pH optimaux sont incompatibles et le cumul peut irriter. Préférez la vitamine C le matin et le rétinol le soir.",
+      en: 'Their optimal pH levels are incompatible and combining them can irritate. Use vitamin C in the morning and retinol at night.',
+    },
+  },
+  {
+    pair: ['acide-salicylique', 'vitamine-c'], severity: 'medium',
+    title: { fr: 'Acide salicylique + Vitamine C pure', en: 'Salicylic acid + Pure vitamin C' },
+    message: {
+      fr: "Deux actifs acides dans la même session augmentent le risque de picotements et de rougeurs. Espacez les applications ou alternez matin/soir.",
+      en: 'Two acidic actives in the same session increase the risk of stinging and redness. Space out applications or alternate morning/evening.',
+    },
+  },
+]
+
+const LAYERING_ACTIVES = {
+  'acide-salicylique': {
+    severity: 'medium',
+    title: { fr: 'Acide salicylique en double', en: 'Doubled salicylic acid' },
+    message: {
+      fr: "Plusieurs produits de cette routine contiennent de l'acide salicylique : risque de sur-exfoliation. Commencez par un seul produit BHA, puis augmentez progressivement si la peau tolère.",
+      en: 'Several products in this routine contain salicylic acid: risk of over-exfoliation. Start with a single BHA product, then increase gradually if your skin tolerates it.',
+    },
+  },
+  'retinol': {
+    severity: 'high',
+    title: { fr: 'Rétinol en double', en: 'Doubled retinol' },
+    message: {
+      fr: "Plusieurs produits de cette routine contiennent du rétinol : risque important d'irritation. N'utilisez qu'un seul produit au rétinol par session.",
+      en: 'Several products in this routine contain retinol: significant risk of irritation. Use only one retinol product per session.',
+    },
+  },
+  'vitamine-c': {
+    severity: 'low',
+    title: { fr: 'Vitamine C en double', en: 'Doubled vitamin C' },
+    message: {
+      fr: "Plusieurs produits contiennent de la vitamine C : inutile de cumuler, un seul suffit pour un effet optimal.",
+      en: 'Several products contain vitamin C: no need to stack them, one is enough for optimal effect.',
+    },
+  },
+}
+
+function detectConflicts(steps) {
+  const map = {}
+  steps.forEach((s) => (s.product.ingredients || []).forEach((ing) => {
+    map[ing] = map[ing] || []
+    if (!map[ing].includes(s.product.name)) map[ing].push(s.product.name)
+  }))
+  const warnings = []
+  for (const c of INGREDIENT_CONFLICTS) {
+    const [x, y] = c.pair
+    if (map[x] && map[y]) {
+      warnings.push({ type: 'pair', severity: c.severity, title: c.title, message: c.message, products: [...new Set([...map[x], ...map[y]])] })
+    }
+  }
+  for (const [active, rule] of Object.entries(LAYERING_ACTIVES)) {
+    if ((map[active] || []).length >= 2) {
+      warnings.push({ type: 'duplicate', severity: rule.severity, title: rule.title, message: rule.message, products: map[active] })
+    }
+  }
+  const order = { high: 0, medium: 1, low: 2 }
+  return warnings.sort((a, b) => order[a.severity] - order[b.severity])
+}
 
 // ============ GET ============
 export async function GET(request, { params }) {
@@ -287,7 +365,8 @@ export async function POST(request, { params }) {
       const routineSlugs = new Set([...morning, ...evening].map((s) => s.product.slug))
       const alternatives = scoredAll.filter((p) => !routineSlugs.has(p.slug) && p.score > 20).slice(0, 4)
       const results = scoredAll.filter((p) => p.score > 20).slice(0, 6)
-      return json({ routine: { morning, evening }, alternatives, results, total: results.length })
+      const warnings = { morning: detectConflicts(morning), evening: detectConflicts(evening) }
+      return json({ routine: { morning, evening, warnings }, alternatives, results, total: results.length })
     }
 
     // ---- LEADS ----
