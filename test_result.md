@@ -245,3 +245,25 @@ agent_communication:
     message: "MVP initial build complete. Please test all backend endpoints listed above. Base URL: use NEXT_PUBLIC_BASE_URL from /app/.env + /api prefix. Admin password: admin123. Do NOT test frontend."
   - agent: "testing"
     message: "✓ Backend testing complete - ALL 42 tests passed (100% success rate). Comprehensive testing performed on all endpoints: (1) Products API with all filters working, (2) Ingredients API with product relationships, (3) Brands API with German filter, (4) Articles API with category filter and sorting, (5) Compare endpoint with common ingredients detection, (6) Product Finder with scoring algorithm, (7) Leads endpoint with validation, (8) Admin authentication with Bearer tokens, (9) Admin protected routes with proper 401 responses, (10) Full CRUD lifecycle for all collections (products, brands, ingredients, articles). All endpoints properly exclude _id field, handle 404s correctly, and validate input. No critical issues found. Backend API is production-ready."
+
+backend:
+  - task: "POST /api/finder v2: returns routine {morning[], evening[]} with ordered steps {order, category, product(+match_percent)}, alternatives[], plus legacy results[] for compat"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Morning: cleanser>serum>moisturizer>sunscreen. Evening: cleanser>serum(2nd best if exists)>moisturizer. Best scored product per category. Manually smoke-tested OK."
+      - working: true
+        agent: "testing"
+        comment: "✓ PASSED - All 72 tests passed (100% success rate). Finder v2 working perfectly. (1) POST /api/finder returns proper routine structure with morning/evening arrays. (2) Morning routine: cleanser → serum → moisturizer → sunscreen (order 1-4, sequential). (3) Evening routine: cleanser → serum → moisturizer (NO sunscreen ever). (4) Evening serum DIFFERS from morning serum when 2+ serums exist (verified: eucerin-dermopure-serum vs nivea-luminous630-serum). (5) Morning and evening cleanser/moisturizer are the SAME product (verified). (6) Each product has score, match_percent (5-99), name, price_eur, slug. (7) Alternatives array (max 4) NOT present in routine (verified). (8) Legacy compat: results array (max 6, sorted by score desc) and total field present. (9) Tested multiple profiles: oily/mid budget, dry/low budget, normal/high budget - all return appropriate routines with highest scored products per category. (10) Edge case: empty body {} returns 200 with routine (no crash). (11) Regression: GET /api/products returns 12 products with no duplicates."
+
+agent_communication:
+  - agent: "main"
+    message: "Feature update: finder now returns step-by-step routine. Please re-test ONLY POST /api/finder (routine structure, ordering, evening serum different from morning when 2+ serums match, alternatives excluded from routine, legacy results still present). Do NOT test frontend."
+  - agent: "testing"
+    message: "✓ Finder v2 testing complete - ALL 72 tests passed (100% success rate). The upgraded POST /api/finder endpoint is working perfectly with the new routine structure. Morning routine includes sunscreen (order 1-4), evening routine excludes sunscreen (order 1-3), evening serum differs from morning serum when multiple serums exist, alternatives are properly excluded from routine, and legacy compatibility (results/total) is maintained. All profiles tested successfully. No issues found."

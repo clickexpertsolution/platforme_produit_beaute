@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
-  BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Beaker, Mail
+  BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, Beaker, Mail
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -726,6 +726,8 @@ const FinderView = ({ lang, nav }) => {
   const [concerns, setConcerns] = useState([])
   const [budget, setBudget] = useState(null)
   const [results, setResults] = useState(null)
+  const [routine, setRoutine] = useState(null)
+  const [alternatives, setAlternatives] = useState([])
   const [loading, setLoading] = useState(false)
 
   const toggleConcern = (id) => setConcerns((cur) => cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id])
@@ -740,10 +742,12 @@ const FinderView = ({ lang, nav }) => {
     })
     const data = await res.json()
     setResults(data.results || [])
+    setRoutine(data.routine || null)
+    setAlternatives(data.alternatives || [])
     setLoading(false)
   }
 
-  const reset = () => { setStep(0); setSkinType(null); setConcerns([]); setBudget(null); setResults(null) }
+  const reset = () => { setStep(0); setSkinType(null); setConcerns([]); setBudget(null); setResults(null); setRoutine(null); setAlternatives([]) }
   const progress = ((step + 1) / 4) * 100
 
   const OptionBtn = ({ active, onClick, children, testid }) => (
@@ -821,36 +825,87 @@ const FinderView = ({ lang, nav }) => {
       {step === 3 && (
         <div>
           {loading ? (
-            <p className="text-center text-stone-400 py-14">{lang === 'fr' ? 'Analyse de votre profil...' : 'Analyzing your profile...'}</p>
+            <p className="text-center text-stone-400 py-14">{lang === 'fr' ? 'Construction de votre routine...' : 'Building your routine...'}</p>
           ) : (
             <div>
-              <p className="font-semibold text-stone-900 mb-4 text-lg" data-testid="finder-results-title">
-                {lang === 'fr' ? `${results?.length || 0} produits recommandés pour vous` : `${results?.length || 0} products recommended for you`}
+              <p className="font-semibold text-stone-900 mb-1 text-lg text-center" data-testid="finder-results-title">
+                {lang === 'fr' ? 'Votre routine personnalisée' : 'Your personalized routine'}
               </p>
-              <div className="grid gap-3">
-                {(results || []).map((p, idx) => (
-                  <Card key={p.slug} data-testid={`finder-result-${p.slug}`} className="border-stone-200 hover:shadow-md transition-all cursor-pointer" onClick={() => nav('product', p.slug)}>
-                    <CardContent className="p-3 md:p-4 flex gap-3 md:gap-4 items-center">
-                      <span className="text-lg font-bold text-stone-300 w-6">{idx + 1}</span>
-                      <img src={p.image} alt={p.name} className="h-16 w-16 md:h-20 md:w-20 rounded-lg object-cover" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] uppercase tracking-wider text-stone-400">{p.brand_name}</p>
-                        <p className="font-semibold text-stone-900 text-sm md:text-base leading-snug truncate">{p.name}</p>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-sm font-bold">{p.price_eur?.toFixed(2)} €</span>
-                          <Stars rating={p.rating} />
-                        </div>
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <div className="h-1.5 bg-stone-100 rounded-full flex-1 overflow-hidden max-w-[140px]">
-                            <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${p.match_percent}%` }}></div>
+              <p className="text-sm text-stone-400 text-center mb-6">
+                {lang === 'fr' ? 'Étape par étape, matin et soir, adaptée à votre profil.' : 'Step by step, morning and evening, tailored to your profile.'}
+              </p>
+
+              {[
+                { key: 'morning', icon: <Sun className="h-5 w-5 text-amber-500" />, fr: 'Routine du matin', en: 'Morning routine', bg: 'bg-amber-50 border-amber-100' },
+                { key: 'evening', icon: <Moon className="h-5 w-5 text-indigo-500" />, fr: 'Routine du soir', en: 'Evening routine', bg: 'bg-indigo-50 border-indigo-100' },
+              ].map((section) => (
+                <div key={section.key} data-testid={`routine-${section.key}`} className={`rounded-2xl border ${section.bg} p-4 md:p-5 mb-5`}>
+                  <p className="font-bold text-stone-900 flex items-center gap-2 mb-4">
+                    {section.icon} {section[lang]}
+                  </p>
+                  <div className="space-y-2.5">
+                    {(routine?.[section.key] || []).map((s) => {
+                      const hints = {
+                        cleanser: { fr: 'Nettoyez votre visage en douceur', en: 'Gently cleanse your face' },
+                        serum: { fr: 'Appliquez le sérum ciblé', en: 'Apply your targeted serum' },
+                        moisturizer: { fr: 'Hydratez et renforcez la barrière cutanée', en: 'Moisturize and support the skin barrier' },
+                        sunscreen: { fr: 'Terminez par la protection solaire', en: 'Finish with sun protection' },
+                      }
+                      return (
+                        <div key={`${section.key}-${s.order}`} data-testid={`routine-step-${section.key}-${s.category}`}
+                          className="flex gap-3 items-center bg-white rounded-xl border border-stone-200 p-3 cursor-pointer hover:shadow-md transition-all"
+                          onClick={() => nav('product', s.product.slug)}>
+                          <div className="flex flex-col items-center shrink-0">
+                            <span className="h-7 w-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center">{s.order}</span>
                           </div>
-                          <span className="text-xs font-semibold text-emerald-700">{p.match_percent}% match</span>
+                          <img src={s.product.image} alt={s.product.name} className="h-14 w-14 md:h-16 md:w-16 rounded-lg object-cover shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
+                              {label(CATEGORIES, s.category, lang)} — {hints[s.category]?.[lang]}
+                            </p>
+                            <p className="font-semibold text-stone-900 text-sm leading-snug truncate">{s.product.name}</p>
+                            <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
+                              <span className="text-[11px] text-stone-400 uppercase tracking-wide">{s.product.brand_name}</span>
+                              <span className="text-xs font-bold text-stone-900">{s.product.price_eur?.toFixed(2)} €</span>
+                              <span className="text-[11px] font-semibold text-emerald-700">{s.product.match_percent}% match</span>
+                            </div>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-stone-300 shrink-0" />
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      )
+                    })}
+                  </div>
+                  <p className="text-xs text-stone-500 mt-3 text-right">
+                    {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-bold text-stone-800">
+                      {(routine?.[section.key] || []).reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €
+                    </span>
+                  </p>
+                </div>
+              ))}
+
+              {alternatives.length > 0 && (
+                <div className="mt-7">
+                  <p className="font-semibold text-stone-900 mb-3">{lang === 'fr' ? 'Autres produits qui correspondent à votre profil' : 'Other products matching your profile'}</p>
+                  <div className="grid gap-2.5">
+                    {alternatives.map((p) => (
+                      <Card key={p.slug} data-testid={`finder-alt-${p.slug}`} className="border-stone-200 hover:shadow-md transition-all cursor-pointer" onClick={() => nav('product', p.slug)}>
+                        <CardContent className="p-3 flex gap-3 items-center">
+                          <img src={p.image} alt={p.name} className="h-12 w-12 rounded-lg object-cover" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] uppercase tracking-wider text-stone-400">{p.brand_name}</p>
+                            <p className="font-semibold text-stone-900 text-sm truncate">{p.name}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold">{p.price_eur?.toFixed(2)} €</p>
+                            <p className="text-[11px] font-semibold text-emerald-700">{p.match_percent}%</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <Button data-testid="finder-restart" variant="outline" className="border-stone-300 mt-6 w-full" onClick={reset}>
                 {lang === 'fr' ? 'Recommencer le quiz' : 'Restart the quiz'}
               </Button>

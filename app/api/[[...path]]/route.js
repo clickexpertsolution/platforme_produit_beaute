@@ -239,7 +239,8 @@ export async function POST(request, { params }) {
       if (category) filter.category = category
       const products = await database.collection('products').find(filter, NOID).toArray()
       const budgetMax = budget === 'low' ? 15 : budget === 'mid' ? 25 : Infinity
-      const scored = products
+      const maxScore = 30 + concerns.length * 25 + 10 + 20
+      const scoredAll = products
         .map((p) => {
           let score = 0
           const reasons = []
@@ -257,13 +258,36 @@ export async function POST(request, { params }) {
             score -= 20
           }
           score += Math.round((p.rating || 0) * 4)
-          return { ...p, score, match_reasons: reasons, matched_concerns: matched }
+          return {
+            ...p, score, match_reasons: reasons, matched_concerns: matched,
+            match_percent: Math.min(99, Math.max(5, Math.round((score / maxScore) * 100))),
+          }
         })
-        .filter((p) => p.score > 20)
         .sort((x, y) => y.score - x.score)
-        .slice(0, 6)
-      const maxScore = 30 + concerns.length * 25 + 10 + 20
-      return json({ results: scored.map((p) => ({ ...p, match_percent: Math.min(99, Math.round((p.score / maxScore) * 100)) })), total: scored.length })
+
+      // Build step-by-step morning/evening routine (best product per category)
+      const bestOf = (cat, excludeSlugs = []) => scoredAll.find((p) => p.category === cat && !excludeSlugs.includes(p.slug)) || null
+      const cleanser = bestOf('cleanser')
+      const serumAM = bestOf('serum')
+      const moisturizer = bestOf('moisturizer')
+      const sunscreen = bestOf('sunscreen')
+      const serumPM = bestOf('serum', serumAM ? [serumAM.slug] : []) || serumAM
+      const morning = [
+        cleanser && { order: 1, category: 'cleanser', product: cleanser },
+        serumAM && { order: 2, category: 'serum', product: serumAM },
+        moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
+        sunscreen && { order: 4, category: 'sunscreen', product: sunscreen },
+      ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
+      const evening = [
+        cleanser && { order: 1, category: 'cleanser', product: cleanser },
+        serumPM && { order: 2, category: 'serum', product: serumPM },
+        moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
+      ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
+
+      const routineSlugs = new Set([...morning, ...evening].map((s) => s.product.slug))
+      const alternatives = scoredAll.filter((p) => !routineSlugs.has(p.slug) && p.score > 20).slice(0, 4)
+      const results = scoredAll.filter((p) => p.score > 20).slice(0, 6)
+      return json({ routine: { morning, evening }, alternatives, results, total: results.length })
     }
 
     // ---- LEADS ----
