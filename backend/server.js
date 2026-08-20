@@ -174,58 +174,51 @@ const ALL_PRODUCTS = [...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p 
 // plateforme externe. `video_url` est l'URL d'origine collée au back-office ;
 // le provider et l'identifiant en sont dérivés côté client.
 //
-// ATTENTION — contenu de démonstration : toutes les entrées pointent vers
-// l'URL de référence fournie au cadrage. Chaque reel doit recevoir l'URL de
-// sa propre vidéo avant mise en production.
-const REEL_PLACEHOLDER_URL = 'https://youtube.com/shorts/I1nvw5Y0sBM'
-
+// Chaque reel pointe vers sa propre vidéo YouTube Shorts. Le provider, l'iframe
+// d'embed et la vignette (thumbnail) en sont dérivés côté client à partir de
+// l'identifiant de la vidéo.
 const SEED_REELS = [
   {
-    slug: 'retinol-par-ou-commencer', video_url: REEL_PLACEHOLDER_URL, duration_s: 48,
-    vertical: 'skincare', ingredient_slug: 'retinol', published_at: '2025-06-18',
-    title: { fr: 'Rétinol : par où commencer', en: 'Retinol: where to start' },
+    slug: 'retinol-et-soleil', video_url: 'https://youtube.com/shorts/I1nvw5Y0sBM', duration_s: 48,
+    vertical: 'skincare', ingredient_slug: 'retinol', published_at: '2025-07-04',
+    title: { fr: 'Rétinol et soleil : danger ?', en: 'Retinol and sun: a danger?' },
     caption: {
-      fr: "Une à deux applications par semaine, le soir, sur peau sèche. On augmente seulement quand la peau ne tiraille plus.",
-      en: 'Once or twice a week, at night, on dry skin. Increase only once your skin stops feeling tight.',
+      fr: "Le rétinol s'applique le soir et sensibilise la peau au soleil. Le lendemain, un SPF élevé n'est pas une option.",
+      en: 'Retinol is applied at night and makes skin more sun-sensitive. The next day, a high SPF is not optional.',
     },
   },
   {
-    slug: 'lire-une-liste-inci', video_url: REEL_PLACEHOLDER_URL, duration_s: 55,
+    slug: 'les-bases-skincare', video_url: 'https://youtube.com/shorts/N_WtZz1X2x0', duration_s: 55,
+    vertical: 'skincare', published_at: '2025-06-29',
+    title: { fr: "Les bases d'une bonne skincare", en: 'Skincare basics that matter' },
+    caption: {
+      fr: "Nettoyer, hydrater, protéger : trois gestes suffisent avant d'empiler les actifs. Le reste est du confort.",
+      en: 'Cleanse, moisturise, protect: three steps are enough before stacking actives. The rest is comfort.',
+    },
+  },
+  {
+    slug: 'skincare-derives-2025', video_url: 'https://youtube.com/shorts/5Bqx3HTtXZM', duration_s: 41,
     vertical: 'skincare', published_at: '2025-06-22',
-    title: { fr: 'Lire une liste INCI en 30 secondes', en: 'Read an INCI list in 30 seconds' },
+    title: { fr: 'Skincare 2025 : les dérives à éviter', en: 'Skincare 2025: the trends to avoid' },
     caption: {
-      fr: "Les cinq premiers ingrédients représentent souvent plus de 80% de la formule. Le reste se joue sous la barre des 1%.",
-      en: 'The first five ingredients often make up over 80% of the formula. The rest plays out below the 1% mark.',
+      fr: "Routines à rallonge, actifs empilés, tendances virales : trop de gestes fragilisent la barrière au lieu de la protéger.",
+      en: 'Endless routines, stacked actives, viral trends: too many steps weaken the barrier instead of protecting it.',
     },
   },
   {
-    slug: 'ph-5-5-pourquoi', video_url: REEL_PLACEHOLDER_URL, duration_s: 41,
-    vertical: 'skincare', product_slug: 'sebamed-clear-face-gel', published_at: '2025-06-29',
-    title: { fr: 'Pourquoi le pH 5.5 change tout', en: 'Why pH 5.5 changes everything' },
+    slug: 'ordre-routine-matin', video_url: 'https://youtube.com/shorts/zYALugUIClA', duration_s: 52,
+    vertical: 'skincare', published_at: '2025-06-18',
+    title: { fr: "L'ordre parfait de ta routine du matin", en: 'The perfect order for your morning routine' },
     caption: {
-      fr: "Le manteau acide de la peau tourne autour de 5.5. Un nettoyant trop alcalin le décape et fragilise la barrière.",
-      en: "The skin's acid mantle sits around 5.5. An overly alkaline cleanser strips it and weakens the barrier.",
-    },
-  },
-  {
-    slug: 'thiamidol-taches-pigmentaires', video_url: REEL_PLACEHOLDER_URL, duration_s: 52,
-    vertical: 'skincare', product_slug: 'nivea-luminous630-serum', published_at: '2025-07-04',
-    title: { fr: 'Taches pigmentaires : ce qui marche', en: 'Dark spots: what actually works' },
-    caption: {
-      fr: "Thiamidol et Luminous630 sortent de la recherche Beiersdorf. Comptez quatre semaines avant de juger un résultat.",
-      en: 'Thiamidol and Luminous630 come out of Beiersdorf research. Give it four weeks before judging results.',
-    },
-  },
-  {
-    slug: 'biotine-chute-de-cheveux', video_url: REEL_PLACEHOLDER_URL, duration_s: 46,
-    vertical: 'hair', ingredient_slug: 'biotine', published_at: '2025-07-11',
-    title: { fr: 'Biotine : utile ou marketing ?', en: 'Biotin: useful or marketing?' },
-    caption: {
-      fr: "La supplémentation n'a d'effet démontré qu'en cas de carence avérée. Sans déficit, le bénéfice reste théorique.",
-      en: 'Supplementation has proven effects only in cases of actual deficiency. Without one, the benefit stays theoretical.',
+      fr: 'Du plus fluide au plus riche : nettoyant, sérum, hydratant, puis SPF en tout dernier geste.',
+      en: 'From thinnest to richest: cleanser, serum, moisturiser, then SPF as the very last step.',
     },
   },
 ]
+
+// Version du jeu de reels : incrémenter pour forcer un ré-ensemencement propre
+// (efface les anciens reels de démo et réinsère SEED_REELS).
+const REELS_VERSION = 5
 
 const SEED_VERSION = 3
 
@@ -247,11 +240,26 @@ async function seedIfEmpty(database) {
 
 // Les reels sont seedés indépendamment du reste : ajouter une collection ne
 // doit pas forcer une remise à zéro complète du contenu, qui effacerait les
-// saisies du back-office.
+// saisies du back-office. Un versionnage dédié permet néanmoins de remplacer
+// proprement le jeu de reels de démo lorsque REELS_VERSION est incrémenté.
 async function seedReelsIfEmpty(database) {
-  const count = await database.collection('reels').countDocuments()
-  if (count > 0) return
+  const before = await database.collection('meta').findOneAndUpdate(
+    { key: 'reels_version' },
+    { $set: { key: 'reels_version', version: REELS_VERSION, at: new Date().toISOString() } },
+    { upsert: true, returnDocument: 'before' }
+  )
+  const currentVersion = before && typeof before.version === 'number' ? before.version : 0
+  const existing = await database.collection('reels').find({}, { projection: { slug: 1, video_url: 1, _id: 0 } }).toArray()
+  const count = existing.length
+  // Auto-réparation : anciens slugs de démo (versions précédentes) présents en base,
+  // ou plusieurs reels pointant vers la même URL placeholder => on force le ré-ensemencement.
+  const OLD_DEMO_SLUGS = ['retinol-par-ou-commencer', 'lire-une-liste-inci', 'ph-5-5-pourquoi', 'thiamidol-taches-pigmentaires', 'biotine-chute-de-cheveux', 'peau-sensible-reactive']
+  const hasStaleSlug = existing.some((r) => OLD_DEMO_SLUGS.includes(r.slug))
+  const distinctUrls = new Set(existing.map((r) => r.video_url))
+  const looksPlaceholder = count > 1 && distinctUrls.size === 1
+  if (count > 0 && currentVersion >= REELS_VERSION && !hasStaleSlug && !looksPlaceholder) return
   const now = new Date().toISOString()
+  await database.collection('reels').deleteMany({})
   await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
 }
 
