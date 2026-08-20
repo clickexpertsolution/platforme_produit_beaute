@@ -12,6 +12,9 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Garantit que public/ existe même si absent du repo
+RUN mkdir -p public
+
 # Variable principale (Coolify) — exposée navigateur + proxy SSR
 ARG REACT_APP_BACKEND_URL
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
