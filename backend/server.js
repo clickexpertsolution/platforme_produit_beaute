@@ -3,6 +3,8 @@ import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
 import { LlmChat, UserMessage } from 'emergentintegrations'
 import { SEED_HUBS } from './lib/seed-hubs.js'
+import { BRANDS_AR, INGREDIENTS_AR, PRODUCTS_AR, ARTICLES_AR, REELS_AR, HUBS_AR } from './lib/content-ar.js'
+import { mergeAr, arUpdateSet, mergeFaqs } from './lib/merge-ar.js'
 
 const app = express()
 app.use(express.json())
@@ -164,9 +166,12 @@ const NEW_PRODUCTS = [
   { slug: 'salus-tisane-nuit-paisible', name: 'Tisane Bio Nuit Paisible', brand_slug: 'salus', brand_name: 'Salus', vertical: 'wellness', category: 'tea', price_eur: 4.9, rating: 4.3, image: IMG.w4, german_made: true, concerns: ['sleep', 'stress'], skin_types: [], ingredients: ['valeriane', 'lavande'], affiliate_url: 'https://www.salus.de', description: { fr: "Mélange bio de valériane, lavande et mélisse pour un rituel du soir apaisant. À infuser 10 minutes, 30 minutes avant le coucher.", en: "Organic blend of valerian, lavender and lemon balm for a calming evening ritual. Steep 10 minutes, drink 30 minutes before bed." } },
 ]
 
-const ALL_BRANDS = [...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] || {}) })), ...NEW_BRANDS]
-const ALL_INGREDIENTS = [...SEED_INGREDIENTS, ...NEW_INGREDIENTS]
-const ALL_PRODUCTS = [...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS]
+// Le contenu de démonstration est écrit en FR/EN ; mergeAr() y greffe la
+// traduction arabe (lib/content-ar.js) avant l'insertion en base.
+const ALL_BRANDS = mergeAr([...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] || {}) })), ...NEW_BRANDS], BRANDS_AR)
+const ALL_INGREDIENTS = mergeAr([...SEED_INGREDIENTS, ...NEW_INGREDIENTS], INGREDIENTS_AR)
+const ALL_PRODUCTS = mergeAr([...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS], PRODUCTS_AR)
+const ALL_ARTICLES = mergeAr(SEED_ARTICLES, ARTICLES_AR)
 
 
 // ============ REELS / SHORTS ============
@@ -216,6 +221,8 @@ const SEED_REELS = [
   },
 ]
 
+const ALL_REELS = mergeAr(SEED_REELS, REELS_AR)
+
 // Version du jeu de reels : incrémenter pour forcer un ré-ensemencement propre
 // (efface les anciens reels de démo et réinsère SEED_REELS).
 const REELS_VERSION = 5
@@ -234,8 +241,50 @@ async function seedIfEmpty(database) {
   await database.collection('brands').insertMany(ALL_BRANDS.map((b) => ({ ...b, id: uuidv4(), created_at: now })))
   await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, id: uuidv4(), created_at: now })))
   await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({ ...p, id: uuidv4(), created_at: now })))
-  await database.collection('articles').insertMany(SEED_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
+  await database.collection('articles').insertMany(ALL_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
+}
+
+// ============ RÉTRO-REMPLISSAGE ARABE ============
+// Une base déjà ensemencée ne repasse jamais par seedIfEmpty : sans cela, les
+// documents existants resteraient sans traduction arabe. On pousse donc la
+// couche `ar` par des `$set` ciblés — aucune suppression, aucune écriture sur
+// fr/en, le contenu saisi au back-office est préservé.
+const AR_BACKFILL_VERSION = 1
+const AR_BACKFILL_JOBS = [
+  ['brands', BRANDS_AR],
+  ['ingredients', INGREDIENTS_AR],
+  ['products', PRODUCTS_AR],
+  ['articles', ARTICLES_AR],
+  ['reels', REELS_AR],
+  ['hubs', HUBS_AR],
+]
+let arBackfilling = null
+function backfillArabic(database) {
+  if (!arBackfilling) {
+    arBackfilling = runArabicBackfill(database).catch(() => {})
+  }
+  return arBackfilling
+}
+async function runArabicBackfill(database) {
+  const before = await database.collection('meta').findOneAndUpdate(
+    { key: 'ar_backfill' },
+    { $set: { key: 'ar_backfill', version: AR_BACKFILL_VERSION, at: new Date().toISOString() } },
+    { upsert: true, returnDocument: 'before' }
+  )
+  if (before && before.version >= AR_BACKFILL_VERSION) return
+  for (const [name, arMap] of AR_BACKFILL_JOBS) {
+    const col = database.collection(name)
+    for (const slug of Object.keys(arMap)) {
+      const ar = arMap[slug]
+      const set = arUpdateSet(ar)
+      if (ar.faqs) {
+        const doc = await col.findOne({ slug }, { projection: { faqs: 1 } })
+        if (doc && Array.isArray(doc.faqs) && doc.faqs.length) set.faqs = mergeFaqs(doc.faqs, ar.faqs)
+      }
+      if (Object.keys(set).length) await col.updateOne({ slug }, { $set: set })
+    }
+  }
 }
 
 // Les reels sont seedés indépendamment du reste : ajouter une collection ne
@@ -306,11 +355,11 @@ async function runReelsSeed(database) {
   // laquelle une requête concurrente se croyait légitime à ré-ensemencer) et
   // chaque reel de démo est remplacé par son slug.
   const now = new Date().toISOString()
-  const slugs = SEED_REELS.map((r) => r.slug)
+  const slugs = ALL_REELS.map((r) => r.slug)
   await reels.deleteMany({ slug: { $nin: slugs } })
   try {
     await reels.bulkWrite(
-      SEED_REELS.map((r) => ({
+      ALL_REELS.map((r) => ({
         replaceOne: { filter: { slug: r.slug }, replacement: { ...r, id: uuidv4(), created_at: now }, upsert: true },
       })),
       { ordered: false }
@@ -336,18 +385,18 @@ const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hub
 const INGREDIENT_CONFLICTS = [
   {
     pair: ['retinol', 'acide-salicylique'], severity: 'high',
-    title: { fr: 'Rétinol + Acide salicylique', en: 'Retinol + Salicylic acid' },
-    message: { fr: "Risque élevé d'irritation et de dessèchement lorsqu'ils sont appliqués dans la même session. Alternez : BHA un soir, rétinol le soir suivant.", en: 'High risk of irritation and dryness when applied in the same session. Alternate: BHA one evening, retinol the next.' },
+    title: { fr: 'Rétinol + Acide salicylique', en: 'Retinol + Salicylic acid', ar: 'ريتينول + حمض الساليسيليك' },
+    message: { fr: "Risque élevé d'irritation et de dessèchement lorsqu'ils sont appliqués dans la même session. Alternez : BHA un soir, rétinol le soir suivant.", en: 'High risk of irritation and dryness when applied in the same session. Alternate: BHA one evening, retinol the next.', ar: 'خطر مرتفع للتهيّج والجفاف عند وضعهما في الجلسة نفسها. ناوب بينهما: حمض BHA ليلة، والريتينول الليلة التالية.' },
   },
   {
     pair: ['retinol', 'vitamine-c'], severity: 'medium',
-    title: { fr: 'Rétinol + Vitamine C pure', en: 'Retinol + Pure vitamin C' },
-    message: { fr: "Leurs pH optimaux sont incompatibles et le cumul peut irriter. Préférez la vitamine C le matin et le rétinol le soir.", en: 'Their optimal pH levels are incompatible and combining them can irritate. Use vitamin C in the morning and retinol at night.' },
+    title: { fr: 'Rétinol + Vitamine C pure', en: 'Retinol + Pure vitamin C', ar: 'ريتينول + فيتامين C النقي' },
+    message: { fr: "Leurs pH optimaux sont incompatibles et le cumul peut irriter. Préférez la vitamine C le matin et le rétinol le soir.", en: 'Their optimal pH levels are incompatible and combining them can irritate. Use vitamin C in the morning and retinol at night.', ar: 'درجتا الحموضة المثلى لهما غير متوافقتين، والجمع بينهما قد يهيّج البشرة. استعمل فيتامين C صباحًا والريتينول مساءً.' },
   },
   {
     pair: ['acide-salicylique', 'vitamine-c'], severity: 'medium',
-    title: { fr: 'Acide salicylique + Vitamine C pure', en: 'Salicylic acid + Pure vitamin C' },
-    message: { fr: "Deux actifs acides dans la même session augmentent le risque de picotements et de rougeurs. Espacez les applications ou alternez matin/soir.", en: 'Two acidic actives in the same session increase the risk of stinging and redness. Space out applications or alternate morning/evening.' },
+    title: { fr: 'Acide salicylique + Vitamine C pure', en: 'Salicylic acid + Pure vitamin C', ar: 'حمض الساليسيليك + فيتامين C النقي' },
+    message: { fr: "Deux actifs acides dans la même session augmentent le risque de picotements et de rougeurs. Espacez les applications ou alternez matin/soir.", en: 'Two acidic actives in the same session increase the risk of stinging and redness. Space out applications or alternate morning/evening.', ar: 'مادّتان حمضيتان في الجلسة نفسها ترفعان خطر الوخز والاحمرار. باعد بين الاستعمالين أو ناوب بين الصباح والمساء.' },
   },
 ]
 
@@ -407,6 +456,7 @@ router.get('/*', async (req, res) => {
     const database = await getDb()
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
+    await backfillArabic(database)
     const q = req.query
 
     if (path.length === 0 || path[0] === 'root') {
@@ -558,6 +608,7 @@ router.post('/*', async (req, res) => {
     const database = await getDb()
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
+    await backfillArabic(database)
     const body = req.body || {}
 
     if (path[0] === 'finder') {
@@ -591,10 +642,10 @@ router.post('/*', async (req, res) => {
       let sections = []
       if (vertical === 'hair') {
         const steps = buildSteps(['shampoo', 'conditioner', 'hair-treatment', 'scalp-serum'])
-        sections = [{ id: 'routine', title: { fr: 'Votre routine capillaire', en: 'Your hair routine' }, icon: 'hair', steps, warnings: detectConflicts(steps) }]
+        sections = [{ id: 'routine', title: { fr: 'Votre routine capillaire', en: 'Your hair routine', ar: 'روتين العناية بشعرك' }, icon: 'hair', steps, warnings: detectConflicts(steps) }]
       } else if (vertical === 'wellness') {
         const steps = buildSteps(['supplement', 'tea', 'bath-body'])
-        sections = [{ id: 'routine', title: { fr: 'Votre programme bien-être', en: 'Your wellness program' }, icon: 'wellness', steps, warnings: detectConflicts(steps) }]
+        sections = [{ id: 'routine', title: { fr: 'Votre programme bien-être', en: 'Your wellness program', ar: 'برنامج عافيتك' }, icon: 'wellness', steps, warnings: detectConflicts(steps) }]
       } else {
         const cleanser = bestOf('cleanser')
         const serumAM = bestOf('serum')
@@ -613,8 +664,8 @@ router.post('/*', async (req, res) => {
           moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
         ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
         sections = [
-          { id: 'morning', title: { fr: 'Routine du matin', en: 'Morning routine' }, icon: 'sun', steps: morning, warnings: detectConflicts(morning) },
-          { id: 'evening', title: { fr: 'Routine du soir', en: 'Evening routine' }, icon: 'moon', steps: evening, warnings: detectConflicts(evening) },
+          { id: 'morning', title: { fr: 'Routine du matin', en: 'Morning routine', ar: 'روتين الصباح' }, icon: 'sun', steps: morning, warnings: detectConflicts(morning) },
+          { id: 'evening', title: { fr: 'Routine du soir', en: 'Evening routine', ar: 'روتين المساء' }, icon: 'moon', steps: evening, warnings: detectConflicts(evening) },
         ]
       }
 
@@ -687,7 +738,7 @@ router.post('/*', async (req, res) => {
       const category = body.category || 'guide'
       const provider = process.env.LLM_PROVIDER || 'openai'
       const model = process.env.LLM_MODEL || 'gpt-4o-mini'
-      const system = `You are a bilingual (French/English) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:\n{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"..."},"excerpt":{"fr":"...","en":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"]}}\nRules: FR and EN must be natural and semantically equivalent (not word-for-word). content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
+      const system = `You are a trilingual (French/English/Arabic) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:\n{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"...","ar":"..."},"excerpt":{"fr":"...","en":"...","ar":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"],"ar":["para1","para2","para3"]}}\nRules: FR, EN and AR must be natural and semantically equivalent (not word-for-word). The Arabic version is written in Modern Standard Arabic; keep brand names, INCI names and acronyms in Latin script. content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
       const prompt = `Topic: ${topic}\nUniverse/vertical: ${vertical}\nPreferred category: ${category}\nWrite the article now as JSON only.`
       try {
         const chat = new LlmChat(key, `dermalyze-gen-${uuidv4()}`, system).withModel(provider, model).withParams({ temperature: 0.5, max_tokens: 2500 })
@@ -699,7 +750,7 @@ router.post('/*', async (req, res) => {
         let article
         try { article = JSON.parse(raw) } catch { return send(res, { error: 'Model did not return valid JSON', raw }, 502) }
         const joinContent = (c) => Array.isArray(c) ? c.join('\n\n') : (c || '')
-        if (article.content) { article.content = { fr: joinContent(article.content.fr), en: joinContent(article.content.en) } }
+        if (article.content) { article.content = { fr: joinContent(article.content.fr), en: joinContent(article.content.en), ar: joinContent(article.content.ar) } }
         if (!article?.title?.fr || !article?.content?.fr) return send(res, { error: 'Incomplete generation', article }, 502)
         article.vertical = vertical
         article.category = article.category || category

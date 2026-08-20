@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
 import { LlmChat, UserMessage } from 'emergentintegrations'
 import { SEED_HUBS } from '@/lib/seed-hubs'
+import { BRANDS_AR, INGREDIENTS_AR, PRODUCTS_AR, ARTICLES_AR, REELS_AR, HUBS_AR } from '@/lib/content-ar'
+import { mergeAr, arUpdateSet, mergeFaqs } from '@/lib/merge-ar'
 
 export const runtime = 'nodejs'
 
@@ -195,9 +197,12 @@ const NEW_PRODUCTS = [
   { slug: 'salus-tisane-nuit-paisible', name: 'Tisane Bio Nuit Paisible', brand_slug: 'salus', brand_name: 'Salus', vertical: 'wellness', category: 'tea', price_eur: 4.9, rating: 4.3, image: IMG.w4, german_made: true, concerns: ['sleep', 'stress'], skin_types: [], ingredients: ['valeriane', 'lavande'], affiliate_url: 'https://www.salus.de', description: { fr: "Mélange bio de valériane, lavande et mélisse pour un rituel du soir apaisant. À infuser 10 minutes, 30 minutes avant le coucher.", en: "Organic blend of valerian, lavender and lemon balm for a calming evening ritual. Steep 10 minutes, drink 30 minutes before bed." } },
 ]
 
-const ALL_BRANDS = [...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] || {}) })), ...NEW_BRANDS]
-const ALL_INGREDIENTS = [...SEED_INGREDIENTS, ...NEW_INGREDIENTS]
-const ALL_PRODUCTS = [...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS]
+// Le contenu de démonstration est écrit en FR/EN ; mergeAr() y greffe la
+// traduction arabe (lib/content-ar.js) avant l'insertion en base.
+const ALL_BRANDS = mergeAr([...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] || {}) })), ...NEW_BRANDS], BRANDS_AR)
+const ALL_INGREDIENTS = mergeAr([...SEED_INGREDIENTS, ...NEW_INGREDIENTS], INGREDIENTS_AR)
+const ALL_PRODUCTS = mergeAr([...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS], PRODUCTS_AR)
+const ALL_ARTICLES = mergeAr(SEED_ARTICLES, ARTICLES_AR)
 
 
 // ============ REELS / SHORTS ============
@@ -247,6 +252,8 @@ const SEED_REELS = [
   },
 ]
 
+const ALL_REELS = mergeAr(SEED_REELS, REELS_AR)
+
 // Version du jeu de reels : incrémenter pour forcer un ré-ensemencement propre
 // (efface les anciens reels de démo et réinsère SEED_REELS).
 const REELS_VERSION = 5
@@ -255,43 +262,43 @@ const REELS_VERSION = 5
 // Références d'études par ingrédient : quelques liens réels pour les actifs
 // connus, repli générique (recherche PubMed) sinon. Illustratif (démo).
 const INGREDIENT_STUDIES = {
-  niacinamide: [{ title: { fr: 'Niacinamide topique et fonction barrière', en: 'Topical niacinamide and skin barrier' }, source: 'Br J Dermatol', year: 2000, url: 'https://pubmed.ncbi.nlm.nih.gov/10971324/' }],
-  retinol: [{ title: { fr: 'Rétinol et photo-vieillissement (essai contrôlé)', en: 'Retinol and photoaging (controlled trial)' }, source: 'Arch Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17515510/' }],
-  'vitamine-c': [{ title: { fr: 'Vitamine C topique en dermatologie', en: 'Topical vitamin C in dermatology' }, source: 'Indian Dermatol Online J', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23741676/' }],
-  'acide-salicylique': [{ title: { fr: "Acide salicylique dans l'acné", en: 'Salicylic acid in acne' }, source: 'J Clin Aesthet Dermatol', year: 2015, url: 'https://pubmed.ncbi.nlm.nih.gov/26155326/' }],
-  'acide-hyaluronique': [{ title: { fr: 'Acide hyaluronique et hydratation cutanée', en: 'Hyaluronic acid and skin hydration' }, source: 'J Drugs Dermatol', year: 2011, url: 'https://pubmed.ncbi.nlm.nih.gov/21607255/' }],
-  cafeine: [{ title: { fr: 'Caféine et follicule pileux', en: 'Caffeine and the hair follicle' }, source: 'Int J Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17214716/' }],
-  ceramides: [{ title: { fr: 'Céramides et réparation de la barrière', en: 'Ceramides and barrier repair' }, source: 'J Clin Aesthet Dermatol', year: 2014, url: 'https://pubmed.ncbi.nlm.nih.gov/25276273/' }],
-  melatonine: [{ title: { fr: 'Mélatonine et sommeil (méta-analyse)', en: 'Melatonin and sleep (meta-analysis)' }, source: 'PLoS One', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23691095/' }],
-  biotine: [{ title: { fr: 'Biotine et santé des phanères (revue)', en: 'Biotin and hair/nail health (review)' }, source: 'Skin Appendage Disord', year: 2017, url: 'https://pubmed.ncbi.nlm.nih.gov/28879195/' }],
+  niacinamide: [{ title: { fr: 'Niacinamide topique et fonction barrière', en: 'Topical niacinamide and skin barrier', ar: 'النياسيناميد الموضعي ووظيفة حاجز البشرة' }, source: 'Br J Dermatol', year: 2000, url: 'https://pubmed.ncbi.nlm.nih.gov/10971324/' }],
+  retinol: [{ title: { fr: 'Rétinol et photo-vieillissement (essai contrôlé)', en: 'Retinol and photoaging (controlled trial)', ar: 'الريتينول والشيخوخة الضوئية (تجربة مُحكَمة)' }, source: 'Arch Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17515510/' }],
+  'vitamine-c': [{ title: { fr: 'Vitamine C topique en dermatologie', en: 'Topical vitamin C in dermatology', ar: 'فيتامين C الموضعي في طبّ الجلد' }, source: 'Indian Dermatol Online J', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23741676/' }],
+  'acide-salicylique': [{ title: { fr: "Acide salicylique dans l'acné", en: 'Salicylic acid in acne', ar: 'حمض الساليسيليك في علاج حبّ الشباب' }, source: 'J Clin Aesthet Dermatol', year: 2015, url: 'https://pubmed.ncbi.nlm.nih.gov/26155326/' }],
+  'acide-hyaluronique': [{ title: { fr: 'Acide hyaluronique et hydratation cutanée', en: 'Hyaluronic acid and skin hydration', ar: 'حمض الهيالورونيك وترطيب البشرة' }, source: 'J Drugs Dermatol', year: 2011, url: 'https://pubmed.ncbi.nlm.nih.gov/21607255/' }],
+  cafeine: [{ title: { fr: 'Caféine et follicule pileux', en: 'Caffeine and the hair follicle', ar: 'الكافيين والجُريب الشعري' }, source: 'Int J Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17214716/' }],
+  ceramides: [{ title: { fr: 'Céramides et réparation de la barrière', en: 'Ceramides and barrier repair', ar: 'السيراميد وإصلاح حاجز البشرة' }, source: 'J Clin Aesthet Dermatol', year: 2014, url: 'https://pubmed.ncbi.nlm.nih.gov/25276273/' }],
+  melatonine: [{ title: { fr: 'Mélatonine et sommeil (méta-analyse)', en: 'Melatonin and sleep (meta-analysis)', ar: 'الميلاتونين والنوم (تحليل بعدي)' }, source: 'PLoS One', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23691095/' }],
+  biotine: [{ title: { fr: 'Biotine et santé des phanères (revue)', en: 'Biotin and hair/nail health (review)', ar: 'البيوتين وصحّة الشعر والأظافر (مراجعة)' }, source: 'Skin Appendage Disord', year: 2017, url: 'https://pubmed.ncbi.nlm.nih.gov/28879195/' }],
 }
 function studiesForIngredient(i) {
   return INGREDIENT_STUDIES[i.slug] || [{
-    title: { fr: `Revue des données cliniques : ${i.name}`, en: `Review of clinical evidence: ${i.name}` },
+    title: { fr: `Revue des données cliniques : ${i.name}`, en: `Review of clinical evidence: ${i.name}`, ar: `مراجعة المعطيات السريرية: ${i.name}` },
     source: 'PubMed', year: 2019,
     url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(i.inci || i.name)}`,
   }]
 }
 function certificationsForProduct(p, brand) {
-  const certs = [{ name: { fr: 'Testé dermatologiquement', en: 'Dermatologically tested' }, scope: 'EU' }]
-  if (p.german_made || (brand && brand.german)) certs.push({ name: { fr: 'Fabriqué en Allemagne', en: 'Made in Germany' }, scope: 'EU' })
-  if (p.vertical === 'skincare') certs.push({ name: { fr: 'Non comédogène (testé)', en: 'Non-comedogenic (tested)' }, scope: 'EU' })
-  if (p.vertical === 'wellness') certs.push({ name: { fr: 'Conforme EFSA', en: 'EFSA-compliant' }, scope: 'EU' })
-  certs.push({ name: { fr: 'Sans cruauté (Leaping Bunny)', en: 'Cruelty-free (Leaping Bunny)' }, scope: 'global' })
-  if ((p.rating || 0) >= 4.5) certs.push({ name: { fr: 'Enregistré FDA (OTC)', en: 'FDA-registered (OTC)' }, scope: 'US' })
+  const certs = [{ name: { fr: 'Testé dermatologiquement', en: 'Dermatologically tested', ar: 'مُختبَر تحت إشراف أطباء الجلد' }, scope: 'EU' }]
+  if (p.german_made || (brand && brand.german)) certs.push({ name: { fr: 'Fabriqué en Allemagne', en: 'Made in Germany', ar: 'صُنع في ألمانيا' }, scope: 'EU' })
+  if (p.vertical === 'skincare') certs.push({ name: { fr: 'Non comédogène (testé)', en: 'Non-comedogenic (tested)', ar: 'لا يسدّ المسام (مُختبَر)' }, scope: 'EU' })
+  if (p.vertical === 'wellness') certs.push({ name: { fr: 'Conforme EFSA', en: 'EFSA-compliant', ar: 'مطابق لمعايير EFSA' }, scope: 'EU' })
+  certs.push({ name: { fr: 'Sans cruauté (Leaping Bunny)', en: 'Cruelty-free (Leaping Bunny)', ar: 'خالٍ من التجارب على الحيوانات (Leaping Bunny)' }, scope: 'global' })
+  if ((p.rating || 0) >= 4.5) certs.push({ name: { fr: 'Enregistré FDA (OTC)', en: 'FDA-registered (OTC)', ar: 'مُسجَّل لدى FDA (OTC)' }, scope: 'US' })
   return certs
 }
 function awardsForProduct(p) {
-  if ((p.rating || 0) >= 4.6) return [{ year: 2026, title: { fr: 'Label 2026 — Meilleur produit certifié', en: '2026 Label — Best Certified Product' } }]
-  if ((p.rating || 0) >= 4.3) return [{ year: 2026, title: { fr: 'Sélection 2026 — Recommandé par les experts', en: '2026 Selection — Expert Recommended' } }]
+  if ((p.rating || 0) >= 4.6) return [{ year: 2026, title: { fr: 'Label 2026 — Meilleur produit certifié', en: '2026 Label — Best Certified Product', ar: 'علامة 2026 — أفضل منتج معتمد' } }]
+  if ((p.rating || 0) >= 4.3) return [{ year: 2026, title: { fr: 'Sélection 2026 — Recommandé par les experts', en: '2026 Selection — Expert Recommended', ar: 'اختيار 2026 — موصى به من الخبراء' } }]
   return []
 }
 function studiesForProduct(p) {
   return [{
-    title: { fr: `Évaluation clinique de tolérance — ${p.name}`, en: `Clinical tolerance assessment — ${p.name}` },
+    title: { fr: `Évaluation clinique de tolérance — ${p.name}`, en: `Clinical tolerance assessment — ${p.name}`, ar: `تقييم سريري للتحمّل — ${p.name}` },
     source: 'Demo Clinical Report', year: 2025,
     url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(p.name)}`,
-    summary: { fr: 'Étude de tolérance et de satisfaction sur 4 semaines (contenu de démonstration).', en: '4-week tolerance and satisfaction study (demo content).' },
+    summary: { fr: 'Étude de tolérance et de satisfaction sur 4 semaines (contenu de démonstration).', en: '4-week tolerance and satisfaction study (demo content).', ar: 'دراسة تحمّل ورضا على مدى أربعة أسابيع (محتوى توضيحي).' },
   }]
 }
 // Ajoute des actifs complémentaires existants aux fiches skincare qui en ont peu.
@@ -329,8 +336,50 @@ async function seedIfEmpty(database) {
     studies: studiesForProduct(p),
     id: uuidv4(), created_at: now,
   })))
-  await database.collection('articles').insertMany(SEED_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
+  await database.collection('articles').insertMany(ALL_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
+}
+
+// ============ RÉTRO-REMPLISSAGE ARABE ============
+// Une base déjà ensemencée ne repasse jamais par seedIfEmpty : sans cela, les
+// documents existants resteraient sans traduction arabe. On pousse donc la
+// couche `ar` par des `$set` ciblés — aucune suppression, aucune écriture sur
+// fr/en, le contenu saisi au back-office est préservé.
+const AR_BACKFILL_VERSION = 1
+const AR_BACKFILL_JOBS = [
+  ['brands', BRANDS_AR],
+  ['ingredients', INGREDIENTS_AR],
+  ['products', PRODUCTS_AR],
+  ['articles', ARTICLES_AR],
+  ['reels', REELS_AR],
+  ['hubs', HUBS_AR],
+]
+let arBackfilling = null
+function backfillArabic(database) {
+  if (!arBackfilling) {
+    arBackfilling = runArabicBackfill(database).catch(() => {})
+  }
+  return arBackfilling
+}
+async function runArabicBackfill(database) {
+  const before = await database.collection('meta').findOneAndUpdate(
+    { key: 'ar_backfill' },
+    { $set: { key: 'ar_backfill', version: AR_BACKFILL_VERSION, at: new Date().toISOString() } },
+    { upsert: true, returnDocument: 'before' }
+  )
+  if (before && before.version >= AR_BACKFILL_VERSION) return
+  for (const [name, arMap] of AR_BACKFILL_JOBS) {
+    const col = database.collection(name)
+    for (const slug of Object.keys(arMap)) {
+      const ar = arMap[slug]
+      const set = arUpdateSet(ar)
+      if (ar.faqs) {
+        const doc = await col.findOne({ slug }, { projection: { faqs: 1 } })
+        if (doc && Array.isArray(doc.faqs) && doc.faqs.length) set.faqs = mergeFaqs(doc.faqs, ar.faqs)
+      }
+      if (Object.keys(set).length) await col.updateOne({ slug }, { $set: set })
+    }
+  }
 }
 
 // Les reels sont seedés indépendamment du reste : ajouter une collection ne
@@ -401,11 +450,11 @@ async function runReelsSeed(database) {
   // laquelle une requête concurrente se croyait légitime à ré-ensemencer) et
   // chaque reel de démo est remplacé par son slug.
   const now = new Date().toISOString()
-  const slugs = SEED_REELS.map((r) => r.slug)
+  const slugs = ALL_REELS.map((r) => r.slug)
   await reels.deleteMany({ slug: { $nin: slugs } })
   try {
     await reels.bulkWrite(
-      SEED_REELS.map((r) => ({
+      ALL_REELS.map((r) => ({
         replaceOne: { filter: { slug: r.slug }, replacement: { ...r, id: uuidv4(), created_at: now }, upsert: true },
       })),
       { ordered: false }
@@ -431,26 +480,29 @@ const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hub
 const INGREDIENT_CONFLICTS = [
   {
     pair: ['retinol', 'acide-salicylique'], severity: 'high',
-    title: { fr: 'Rétinol + Acide salicylique', en: 'Retinol + Salicylic acid' },
+    title: { fr: 'Rétinol + Acide salicylique', en: 'Retinol + Salicylic acid', ar: 'ريتينول + حمض الساليسيليك' },
     message: {
       fr: "Risque élevé d'irritation et de dessèchement lorsqu'ils sont appliqués dans la même session. Alternez : BHA un soir, rétinol le soir suivant.",
       en: 'High risk of irritation and dryness when applied in the same session. Alternate: BHA one evening, retinol the next.',
+      ar: 'خطر مرتفع للتهيّج والجفاف عند وضعهما في الجلسة نفسها. ناوب بينهما: حمض BHA ليلة، والريتينول الليلة التالية.',
     },
   },
   {
     pair: ['retinol', 'vitamine-c'], severity: 'medium',
-    title: { fr: 'Rétinol + Vitamine C pure', en: 'Retinol + Pure vitamin C' },
+    title: { fr: 'Rétinol + Vitamine C pure', en: 'Retinol + Pure vitamin C', ar: 'ريتينول + فيتامين C النقي' },
     message: {
       fr: "Leurs pH optimaux sont incompatibles et le cumul peut irriter. Préférez la vitamine C le matin et le rétinol le soir.",
       en: 'Their optimal pH levels are incompatible and combining them can irritate. Use vitamin C in the morning and retinol at night.',
+      ar: 'درجتا الحموضة المثلى لهما غير متوافقتين، والجمع بينهما قد يهيّج البشرة. استعمل فيتامين C صباحًا والريتينول مساءً.',
     },
   },
   {
     pair: ['acide-salicylique', 'vitamine-c'], severity: 'medium',
-    title: { fr: 'Acide salicylique + Vitamine C pure', en: 'Salicylic acid + Pure vitamin C' },
+    title: { fr: 'Acide salicylique + Vitamine C pure', en: 'Salicylic acid + Pure vitamin C', ar: 'حمض الساليسيليك + فيتامين C النقي' },
     message: {
       fr: "Deux actifs acides dans la même session augmentent le risque de picotements et de rougeurs. Espacez les applications ou alternez matin/soir.",
       en: 'Two acidic actives in the same session increase the risk of stinging and redness. Space out applications or alternate morning/evening.',
+      ar: 'مادّتان حمضيتان في الجلسة نفسها ترفعان خطر الوخز والاحمرار. باعد بين الاستعمالين أو ناوب بين الصباح والمساء.',
     },
   },
 ]
@@ -512,6 +564,7 @@ export async function GET(request, { params }) {
     const database = await getDb()
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
+    await backfillArabic(database)
     const url = new URL(request.url)
     const q = Object.fromEntries(url.searchParams)
 
@@ -686,6 +739,7 @@ export async function POST(request, { params }) {
     const database = await getDb()
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
+    await backfillArabic(database)
     const body = await request.json().catch(() => ({}))
 
     // ---- PRODUCT FINDER ----
@@ -736,10 +790,10 @@ export async function POST(request, { params }) {
       let sections = []
       if (vertical === 'hair') {
         const steps = buildSteps(['shampoo', 'conditioner', 'hair-treatment', 'scalp-serum'])
-        sections = [{ id: 'routine', title: { fr: 'Votre routine capillaire', en: 'Your hair routine' }, icon: 'hair', steps, warnings: detectConflicts(steps) }]
+        sections = [{ id: 'routine', title: { fr: 'Votre routine capillaire', en: 'Your hair routine', ar: 'روتين العناية بشعرك' }, icon: 'hair', steps, warnings: detectConflicts(steps) }]
       } else if (vertical === 'wellness') {
         const steps = buildSteps(['supplement', 'tea', 'bath-body'])
-        sections = [{ id: 'routine', title: { fr: 'Votre programme bien-être', en: 'Your wellness program' }, icon: 'wellness', steps, warnings: detectConflicts(steps) }]
+        sections = [{ id: 'routine', title: { fr: 'Votre programme bien-être', en: 'Your wellness program', ar: 'برنامج عافيتك' }, icon: 'wellness', steps, warnings: detectConflicts(steps) }]
       } else {
         const cleanser = bestOf('cleanser')
         const serumAM = bestOf('serum')
@@ -758,8 +812,8 @@ export async function POST(request, { params }) {
           moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
         ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
         sections = [
-          { id: 'morning', title: { fr: 'Routine du matin', en: 'Morning routine' }, icon: 'sun', steps: morning, warnings: detectConflicts(morning) },
-          { id: 'evening', title: { fr: 'Routine du soir', en: 'Evening routine' }, icon: 'moon', steps: evening, warnings: detectConflicts(evening) },
+          { id: 'morning', title: { fr: 'Routine du matin', en: 'Morning routine', ar: 'روتين الصباح' }, icon: 'sun', steps: morning, warnings: detectConflicts(morning) },
+          { id: 'evening', title: { fr: 'Routine du soir', en: 'Evening routine', ar: 'روتين المساء' }, icon: 'moon', steps: evening, warnings: detectConflicts(evening) },
         ]
       }
 
@@ -865,9 +919,9 @@ export async function POST(request, { params }) {
       const provider = process.env.LLM_PROVIDER || 'openai'
       const model = process.env.LLM_MODEL || 'gpt-4o-mini'
 
-      const system = `You are a bilingual (French/English) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:
-{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"..."},"excerpt":{"fr":"...","en":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"]}}
-Rules: FR and EN must be natural and semantically equivalent (not word-for-word). content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
+      const system = `You are a trilingual (French/English/Arabic) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:
+{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"...","ar":"..."},"excerpt":{"fr":"...","en":"...","ar":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"],"ar":["para1","para2","para3"]}}
+Rules: FR, EN and AR must be natural and semantically equivalent (not word-for-word). The Arabic version is written in Modern Standard Arabic; keep brand names, INCI names and acronyms in Latin script. content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
       const prompt = `Topic: ${topic}\nUniverse/vertical: ${vertical}\nPreferred category: ${category}\nWrite the article now as JSON only.`
 
       try {
@@ -884,7 +938,7 @@ Rules: FR and EN must be natural and semantically equivalent (not word-for-word)
         try { article = JSON.parse(raw) } catch { return json({ error: 'Model did not return valid JSON', raw }, 502) }
         // Normalize content arrays -> joined paragraphs
         const joinContent = (c) => Array.isArray(c) ? c.join('\n\n') : (c || '')
-        if (article.content) { article.content = { fr: joinContent(article.content.fr), en: joinContent(article.content.en) } }
+        if (article.content) { article.content = { fr: joinContent(article.content.fr), en: joinContent(article.content.en), ar: joinContent(article.content.ar) } }
         if (!article?.title?.fr || !article?.content?.fr) return json({ error: 'Incomplete generation', article }, 502)
         article.vertical = vertical
         article.category = article.category || category

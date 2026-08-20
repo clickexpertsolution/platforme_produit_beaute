@@ -49,6 +49,13 @@
     /* --- Sélection --- */
     --dz-selection: #E3DCCF;
 
+    /* --- Mot-clé sans équivalent arabe (pastille .dz-kw) ---
+       Fond plus foncé que la page, pris dans la famille de l'accent pour
+       rester dans le ton de la plateforme. */
+    --dz-kw-bg: #12303F;
+    --dz-kw-text: #F6F5F2;
+    --dz-kw-bg-on-dark: rgba(246, 245, 242, 0.16);
+
     /* --- Placeholder d'image (rayures diagonales du prototype) --- */
     --dz-placeholder: repeating-linear-gradient(135deg, #E8E5DE 0 11px, #EFEDE7 11px 22px);
 
@@ -184,4 +191,128 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+
+/* ==========================================================================
+   Arabe (RTL) & mots-clés non traduits
+   ========================================================================== */
+
+/* Mot-clé conservé tel quel (marque, INCI, sigle, nom de produit) : pastille
+   au fond plus foncé, direction LTR isolée pour rester lisible au milieu d'un
+   texte arabe. */
+.dz-kw {
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-plex-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.35;
+  padding: 0.06em 0.42em;
+  margin-inline: 0.14em;
+  border-radius: 6px;
+  background: var(--dz-kw-bg);
+  color: var(--dz-kw-text);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+/* Variante titre : même fond foncé, mais la typo du titre est conservée pour
+   ne pas transformer un nom de produit en bloc de code. */
+.dz-kw--title {
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0.02em 0.26em;
+  border-radius: 8px;
+  margin-inline: 0;
+  white-space: normal;
+}
+
+/* Sur les blocs sombres (CTA, guide d'achat, reels), la pastille foncée se
+   fondrait dans le fond : on l'éclaircit. */
+.bg-dz-ink .dz-kw,
+.text-dz-on-dark .dz-kw,
+.text-white .dz-kw {
+  background: var(--dz-kw-bg-on-dark);
+  color: var(--dz-on-dark);
+}
+
+/* Groupes numériques (prix, notes, compteurs) : ils gardent l'ordre latin
+   même dans un contexte RTL, sinon « 24,90 € » devient « € 24,90 ». */
+.dz-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* --- Typographie arabe ---------------------------------------------------
+   Archivo et Instrument Serif n'ont pas de glyphes arabes : on bascule sur la
+   paire arabe chargée dans layout.js. */
+html[dir='rtl'] body,
+html[dir='rtl'] input,
+html[dir='rtl'] textarea,
+html[dir='rtl'] button {
+  font-family: var(--font-arabic), 'IBM Plex Sans Arabic', 'Noto Sans Arabic', Tahoma, sans-serif;
+}
+
+html[dir='rtl'] h1,
+html[dir='rtl'] h2,
+html[dir='rtl'] h3,
+html[dir='rtl'] .font-display {
+  font-family: var(--font-arabic-display), 'Noto Kufi Arabic', 'IBM Plex Sans Arabic', sans-serif;
+  line-height: 1.35;
+}
+
+html[dir='rtl'] .font-mono:not(.dz-kw) {
+  font-family: var(--font-arabic), 'IBM Plex Sans Arabic', sans-serif;
+}
+
+/* L'arabe ne connaît ni casse ni lettres détachées : les `tracking-*` et
+   `uppercase` du design latin coupent les ligatures, on les neutralise. */
+html[dir='rtl'] *:not(.dz-kw):not(.dz-kw *) {
+  letter-spacing: normal !important;
+}
+
+html[dir='rtl'] .uppercase:not(.dz-kw) {
+  text-transform: none;
+}
+
+/* --- Miroir des utilitaires physiques -----------------------------------
+   Flex et grid suivent déjà `dir`. Restent les marges, paddings et positions
+   absolues, exprimés en gauche/droite dans le design d'origine.
+   Les paires (left-4 + right-4) sont symétriques : on les laisse telles quelles. */
+[dir='rtl'] .mr-1 { margin-right: 0; margin-left: 0.25rem; }
+[dir='rtl'] .mr-1\.5 { margin-right: 0; margin-left: 0.375rem; }
+[dir='rtl'] .mr-2 { margin-right: 0; margin-left: 0.5rem; }
+[dir='rtl'] .ml-1 { margin-left: 0; margin-right: 0.25rem; }
+[dir='rtl'] .ml-2 { margin-left: 0; margin-right: 0.5rem; }
+[dir='rtl'] .ml-auto { margin-left: 0; margin-right: auto; }
+
+[dir='rtl'] .pl-5 { padding-left: 0; padding-right: 1.25rem; }
+[dir='rtl'] .pl-6 { padding-left: 0; padding-right: 1.5rem; }
+[dir='rtl'] .pl-9 { padding-left: 0; padding-right: 2.25rem; }
+[dir='rtl'] .pr-2 { padding-right: 0; padding-left: 0.5rem; }
+[dir='rtl'] .pr-6 { padding-right: 0; padding-left: 1.5rem; }
+
+[dir='rtl'] .text-left { text-align: right; }
+[dir='rtl'] .text-right { text-align: left; }
+
+[dir='rtl'] .left-3:not(.right-3) { left: auto; right: 0.75rem; }
+[dir='rtl'] .left-4:not(.right-4) { left: auto; right: 1rem; }
+[dir='rtl'] .right-3:not(.left-3) { right: auto; left: 0.75rem; }
+[dir='rtl'] .right-4:not(.left-4) { right: auto; left: 1rem; }
+[dir='rtl'] .right-5:not(.left-5) { right: auto; left: 1.25rem; }
+[dir='rtl'] .top-3.left-3 { left: auto; right: 0.75rem; }
+
+/* Les flèches directionnelles doivent pointer dans le sens de lecture. */
+[dir='rtl'] .lucide-arrow-right,
+[dir='rtl'] .lucide-arrow-left,
+[dir='rtl'] .dz-dir-arrow {
+  transform: scaleX(-1);
+}
+
+/* Le placeholder rayé est diagonal : on l'inverse pour suivre la mise en page. */
+[dir='rtl'] .dz-placeholder {
+  background: repeating-linear-gradient(45deg, #E8E5DE 0 11px, #EFEDE7 11px 22px);
 }

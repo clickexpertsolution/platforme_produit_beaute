@@ -1,7 +1,7 @@
 import './globals.css'
 import { Providers } from './providers'
 import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION, OG_IMAGE, absoluteUrl } from '@/lib/site'
-import { Archivo, Instrument_Serif, IBM_Plex_Mono } from 'next/font/google'
+import { Archivo, Instrument_Serif, IBM_Plex_Mono, IBM_Plex_Sans_Arabic, Noto_Kufi_Arabic } from 'next/font/google'
 
 // Typographie du handoff : Archivo (UI), Instrument Serif (display),
 // IBM Plex Mono (données / meta).
@@ -24,6 +24,21 @@ const plexMono = IBM_Plex_Mono({
   variable: '--font-plex-mono',
   display: 'swap',
 })
+// Arabe : Archivo et Instrument Serif n'ont pas de glyphes arabes. On charge
+// donc une paire équivalente — IBM Plex Sans Arabic pour l'UI (même famille
+// que le mono du design), Noto Kufi Arabic pour les titres display.
+const plexArabic = IBM_Plex_Sans_Arabic({
+  subsets: ['arabic'],
+  weight: ['300', '400', '500', '600'],
+  variable: '--font-arabic',
+  display: 'swap',
+})
+const notoKufiArabic = Noto_Kufi_Arabic({
+  subsets: ['arabic'],
+  weight: ['400', '500', '600'],
+  variable: '--font-arabic-display',
+  display: 'swap',
+})
 
 // Métadonnées servies dans le HTML initial : c'est la seule chose que lisent les
 // robots d'aperçu de lien (WhatsApp, Facebook, LinkedIn, X), qui n'exécutent pas
@@ -41,6 +56,7 @@ export const metadata = {
     'skincare', 'soins de la peau', 'ingrédients cosmétiques', 'INCI',
     'comparateur de produits', 'routine visage', 'marques allemandes',
     'dermatologie', 'beauté', 'bien-être',
+    'العناية بالبشرة', 'مكوّنات', 'روتين العناية', 'علامات ألمانية', 'مقارنة المنتجات',
   ],
   authors: [{ name: SITE_NAME }],
   creator: SITE_NAME,
@@ -55,7 +71,7 @@ export const metadata = {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     locale: 'fr_FR',
-    alternateLocale: ['en_US'],
+    alternateLocale: ['en_US', 'ar_AR'],
     images: [OG_IMAGE],
   },
   twitter: {
@@ -122,7 +138,7 @@ const JSON_LD = {
       name: SITE_NAME,
       description: SITE_DESCRIPTION,
       publisher: { '@id': `${SITE_URL}/#organization` },
-      inLanguage: ['fr-FR', 'en-US'],
+      inLanguage: ['fr-FR', 'en-US', 'ar'],
     },
   ],
 }
@@ -131,13 +147,14 @@ export default function RootLayout({ children }) {
   return (
     <html lang="fr">
       <head>
+        <script dangerouslySetInnerHTML={{__html:'try{var l=localStorage.getItem("lang");if(l){document.documentElement.lang=l;document.documentElement.dir=l==="ar"?"rtl":"ltr"}}catch(e){}'}} />
         <script dangerouslySetInnerHTML={{__html:'window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);'}} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
         />
       </head>
-      <body className={`${archivo.variable} ${instrumentSerif.variable} ${plexMono.variable}`}>
+      <body className={`${archivo.variable} ${instrumentSerif.variable} ${plexMono.variable} ${plexArabic.variable} ${notoKufiArabic.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>
