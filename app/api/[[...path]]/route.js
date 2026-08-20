@@ -365,6 +365,13 @@ export async function GET(request, { params }) {
       return json({ a, b, common_ingredients: commonIngredients, ingredient_details: ingredientDetails })
     }
 
+    // ---- SHARED ROUTINES ----
+    if (path[0] === 'routines' && path[1]) {
+      const routineDoc = await database.collection('routines').findOne({ id: path[1] }, NOID)
+      if (!routineDoc) return json({ error: 'Routine not found' }, 404)
+      return json(routineDoc)
+    }
+
     // ---- ADMIN ----
     if (path[0] === 'admin') {
       const session = await requireAdmin(request, database)
@@ -460,6 +467,24 @@ export async function POST(request, { params }) {
       const results = scoredAll.filter((p) => p.score > 20).slice(0, 6)
       const warnings = { morning: detectConflicts(morning), evening: detectConflicts(evening) }
       return json({ routine: { morning, evening, warnings }, alternatives, results, total: results.length })
+    }
+
+    // ---- SAVE / SHARE A ROUTINE ----
+    if (path[0] === 'routines') {
+      const routine = body.routine
+      if (!routine || (!routine.morning?.length && !routine.evening?.length)) {
+        return json({ error: 'routine is required' }, 400)
+      }
+      const shortId = uuidv4().replace(/-/g, '').slice(0, 10)
+      const doc = {
+        id: shortId,
+        routine,
+        alternatives: Array.isArray(body.alternatives) ? body.alternatives : [],
+        profile: body.profile || {},
+        created_at: new Date().toISOString(),
+      }
+      await database.collection('routines').insertOne({ ...doc })
+      return json({ id: shortId }, 201)
     }
 
     // ---- LEADS ----

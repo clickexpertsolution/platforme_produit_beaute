@@ -15,7 +15,8 @@ import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
   BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail,
-  Scissors, HeartPulse, Factory, BadgeCheck, HelpCircle, ShoppingBag, ListChecks
+  Scissors, HeartPulse, Factory, BadgeCheck, HelpCircle, ShoppingBag, ListChecks,
+  Share2, Copy
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -827,6 +828,227 @@ const CompareView = ({ lang, nav, products, compareA, setCompareA }) => {
 }
 
 // ---------- Product Finder ----------
+const ROUTINE_HINTS = {
+  cleanser: { fr: 'Nettoyez votre visage en douceur', en: 'Gently cleanse your face' },
+  serum: { fr: 'Appliquez le sérum ciblé', en: 'Apply your targeted serum' },
+  moisturizer: { fr: 'Hydratez et renforcez la barrière cutanée', en: 'Moisturize and support the skin barrier' },
+  sunscreen: { fr: 'Terminez par la protection solaire', en: 'Finish with sun protection' },
+}
+
+const RoutineDisplay = ({ routine, alternatives = [], lang, nav }) => (
+  <div>
+    {[
+      { key: 'morning', icon: <Sun className="h-5 w-5 text-amber-500" />, fr: 'Routine du matin', en: 'Morning routine', bg: 'bg-amber-50 border-amber-100' },
+      { key: 'evening', icon: <Moon className="h-5 w-5 text-indigo-500" />, fr: 'Routine du soir', en: 'Evening routine', bg: 'bg-indigo-50 border-indigo-100' },
+    ].map((section) => (
+      <div key={section.key} data-testid={`routine-${section.key}`} className={`rounded-2xl border ${section.bg} p-4 md:p-5 mb-5`}>
+        <p className="font-bold text-stone-900 flex items-center gap-2 mb-4">
+          {section.icon} {section[lang]}
+        </p>
+        <div className="space-y-2.5">
+          {(routine?.[section.key] || []).map((s) => (
+            <div key={`${section.key}-${s.order}`} data-testid={`routine-step-${section.key}-${s.category}`}
+              className="flex gap-3 items-center bg-white rounded-xl border border-stone-200 p-3 cursor-pointer hover:shadow-md transition-all"
+              onClick={() => nav('product', s.product.slug)}>
+              <div className="flex flex-col items-center shrink-0">
+                <span className="h-7 w-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center">{s.order}</span>
+              </div>
+              <img src={s.product.image} alt={s.product.name} className="h-14 w-14 md:h-16 md:w-16 rounded-lg object-cover shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
+                  {label(CATEGORIES, s.category, lang)} — {ROUTINE_HINTS[s.category]?.[lang]}
+                </p>
+                <p className="font-semibold text-stone-900 text-sm leading-snug truncate">{s.product.name}</p>
+                <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
+                  <span className="text-[11px] text-stone-400 uppercase tracking-wide">{s.product.brand_name}</span>
+                  <span className="text-xs font-bold text-stone-900">{s.product.price_eur?.toFixed(2)} €</span>
+                  {s.product.match_percent != null && <span className="text-[11px] font-semibold text-emerald-700">{s.product.match_percent}% match</span>}
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-stone-300 shrink-0" />
+            </div>
+          ))}
+        </div>
+        {(routine?.warnings?.[section.key] || []).map((w, wi) => (
+          <div key={wi} data-testid={`routine-warning-${section.key}-${wi}`}
+            className={`mt-3 rounded-xl border p-3 flex gap-2.5 ${w.severity === 'high' ? 'bg-red-50 border-red-200' : w.severity === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
+            <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${w.severity === 'high' ? 'text-red-600' : w.severity === 'medium' ? 'text-amber-600' : 'text-stone-500'}`} />
+            <div>
+              <p className={`text-xs font-bold ${w.severity === 'high' ? 'text-red-800' : w.severity === 'medium' ? 'text-amber-800' : 'text-stone-700'}`}>
+                {w.title?.[lang]}
+                <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide font-bold ${w.severity === 'high' ? 'bg-red-200 text-red-800' : w.severity === 'medium' ? 'bg-amber-200 text-amber-800' : 'bg-stone-200 text-stone-600'}`}>
+                  {w.severity === 'high' ? (lang === 'fr' ? 'Risque élevé' : 'High risk') : w.severity === 'medium' ? (lang === 'fr' ? 'Attention' : 'Caution') : 'Info'}
+                </span>
+              </p>
+              <p className="text-xs mt-1 text-stone-600 leading-relaxed">{w.message?.[lang]}</p>
+              <p className="text-[11px] text-stone-400 mt-1">{(w.products || []).join(' + ')}</p>
+            </div>
+          </div>
+        ))}
+        {(routine?.warnings?.[section.key] || []).length === 0 && (
+          <p data-testid={`routine-noconflict-${section.key}`} className="mt-3 text-xs text-emerald-700 flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? "Aucun conflit d'actifs détecté dans cette routine" : 'No active-ingredient conflicts detected in this routine'}
+          </p>
+        )}
+        <p className="text-xs text-stone-500 mt-3 text-right">
+          {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-bold text-stone-800">
+            {(routine?.[section.key] || []).reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €
+          </span>
+        </p>
+      </div>
+    ))}
+
+    {alternatives.length > 0 && (
+      <div className="mt-7">
+        <p className="font-semibold text-stone-900 mb-3">{lang === 'fr' ? 'Autres produits qui correspondent à votre profil' : 'Other products matching your profile'}</p>
+        <div className="grid gap-2.5">
+          {alternatives.map((p) => (
+            <Card key={p.slug} data-testid={`finder-alt-${p.slug}`} className="border-stone-200 hover:shadow-md transition-all cursor-pointer" onClick={() => nav('product', p.slug)}>
+              <CardContent className="p-3 flex gap-3 items-center">
+                <img src={p.image} alt={p.name} className="h-12 w-12 rounded-lg object-cover" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] uppercase tracking-wider text-stone-400">{p.brand_name}</p>
+                  <p className="font-semibold text-stone-900 text-sm truncate">{p.name}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold">{p.price_eur?.toFixed(2)} €</p>
+                  {p.match_percent != null && <p className="text-[11px] font-semibold text-emerald-700">{p.match_percent}%</p>}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+)
+
+// Share button + generated link for a finder routine
+const ShareRoutine = ({ routine, alternatives, profile, lang }) => {
+  const [state, setState] = useState('idle') // idle | loading | ready | error
+  const [url, setUrl] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const createLink = async () => {
+    setState('loading')
+    try {
+      const res = await fetch('/api/routines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routine, alternatives, profile }),
+      })
+      if (!res.ok) throw new Error('failed')
+      const data = await res.json()
+      const shareUrl = `${window.location.origin}/#/routine/${data.id}`
+      setUrl(shareUrl)
+      setState('ready')
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: lang === 'fr' ? 'Ma routine skincare' : 'My skincare routine',
+            text: lang === 'fr' ? 'Voici la routine que j’ai trouvée sur Dermalyze :' : 'Here is the routine I found on Dermalyze:',
+            url: shareUrl,
+          })
+        }
+      } catch { /* user cancelled native share */ }
+    } catch {
+      setState('error')
+    }
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard unavailable */ }
+  }
+
+  return (
+    <div data-testid="share-routine" className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 md:p-5">
+      <p className="font-bold text-stone-900 flex items-center gap-2">
+        <Share2 className="h-4 w-4 text-emerald-700" /> {lang === 'fr' ? 'Partager ma routine' : 'Share my routine'}
+      </p>
+      <p className="text-sm text-stone-600 mt-1">
+        {lang === 'fr' ? 'Générez un lien unique et envoyez votre routine à vos amis.' : 'Generate a unique link and send your routine to your friends.'}
+      </p>
+      {state !== 'ready' ? (
+        <Button data-testid="share-routine-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white mt-3" disabled={state === 'loading'} onClick={createLink}>
+          <Share2 className="h-4 w-4 mr-2" />
+          {state === 'loading' ? (lang === 'fr' ? 'Création du lien...' : 'Creating link...') : (lang === 'fr' ? 'Créer un lien de partage' : 'Create a share link')}
+        </Button>
+      ) : (
+        <div className="mt-3 flex flex-col sm:flex-row gap-2">
+          <Input data-testid="share-routine-url" readOnly value={url} onFocus={(e) => e.target.select()} className="bg-white text-sm" />
+          <Button data-testid="share-routine-copy" variant="outline" className="border-emerald-300 text-emerald-800 shrink-0" onClick={copy}>
+            {copied ? <><Check className="h-4 w-4 mr-2" />{lang === 'fr' ? 'Copié !' : 'Copied!'}</> : <><Copy className="h-4 w-4 mr-2" />{lang === 'fr' ? 'Copier' : 'Copy'}</>}
+          </Button>
+        </div>
+      )}
+      {state === 'error' && (
+        <p className="text-xs text-red-600 mt-2">{lang === 'fr' ? "Impossible de créer le lien. Réessayez." : 'Could not create the link. Please try again.'}</p>
+      )}
+    </div>
+  )
+}
+
+// Read-only view of a shared routine (accessed via unique link)
+const SharedRoutineView = ({ id, lang, nav }) => {
+  const [data, setData] = useState(null)
+  const [status, setStatus] = useState('loading') // loading | ok | notfound
+  useEffect(() => {
+    setStatus('loading')
+    fetch(`/api/routines/${id}`).then((r) => {
+      if (!r.ok) throw new Error('nf')
+      return r.json()
+    }).then((d) => { setData(d); setStatus('ok') }).catch(() => setStatus('notfound'))
+  }, [id])
+
+  if (status === 'loading') {
+    return <div className="container mx-auto px-4 py-16 max-w-2xl text-center text-stone-400">{lang === 'fr' ? 'Chargement de la routine...' : 'Loading routine...'}</div>
+  }
+  if (status === 'notfound') {
+    return (
+      <div className="container mx-auto px-4 py-16 max-w-2xl text-center">
+        <p className="text-stone-900 font-semibold text-lg">{lang === 'fr' ? 'Routine introuvable' : 'Routine not found'}</p>
+        <p className="text-stone-500 mt-2 text-sm">{lang === 'fr' ? "Ce lien n'est plus valide ou a expiré." : 'This link is no longer valid or has expired.'}</p>
+        <Button data-testid="shared-create-own" className="bg-emerald-800 hover:bg-emerald-900 text-white mt-5" onClick={() => nav('finder')}>
+          <Sparkles className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Créer ma propre routine' : 'Create my own routine'}
+        </Button>
+      </div>
+    )
+  }
+
+  const profile = data.profile || {}
+  const concernLabels = (profile.concerns || []).map((c) => label(CONCERNS, c, lang)).filter(Boolean)
+  const skinLabel = profile.skin_type ? label(SKIN_TYPES, profile.skin_type, lang) : null
+  const budgetLabel = { low: lang === 'fr' ? 'Économique' : 'Budget', mid: lang === 'fr' ? 'Modéré' : 'Moderate', high: 'Premium' }[profile.budget]
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-2xl">
+      <div className="text-center mb-6">
+        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-3"><Share2 className="h-3 w-3 mr-1" /> {lang === 'fr' ? 'Routine partagée' : 'Shared routine'}</Badge>
+        <h1 className="text-2xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+          {lang === 'fr' ? 'Une routine personnalisée a été partagée avec vous' : 'A personalized routine has been shared with you'}
+        </h1>
+        {(skinLabel || concernLabels.length > 0 || budgetLabel) && (
+          <div className="flex items-center justify-center gap-2 flex-wrap mt-4">
+            {skinLabel && <Badge variant="secondary" className="bg-stone-100 text-stone-600">{lang === 'fr' ? 'Peau' : 'Skin'} : {skinLabel}</Badge>}
+            {concernLabels.map((c, i) => <Badge key={i} variant="secondary" className="bg-stone-100 text-stone-600">{c}</Badge>)}
+            {budgetLabel && <Badge variant="secondary" className="bg-stone-100 text-stone-600">{lang === 'fr' ? 'Budget' : 'Budget'} : {budgetLabel}</Badge>}
+          </div>
+        )}
+      </div>
+
+      <RoutineDisplay routine={data.routine} alternatives={data.alternatives || []} lang={lang} nav={nav} />
+
+      <div className="mt-8 rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-center">
+        <p className="font-bold text-stone-900">{lang === 'fr' ? 'Envie de votre propre routine ?' : 'Want your own routine?'}</p>
+        <p className="text-sm text-stone-600 mt-1">{lang === 'fr' ? 'Répondez à 3 questions et obtenez des recommandations personnalisées.' : 'Answer 3 questions and get personalized recommendations.'}</p>
+        <Button data-testid="shared-create-own" className="bg-emerald-800 hover:bg-emerald-900 text-white mt-3" onClick={() => nav('finder')}>
+          <Sparkles className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Lancer le Product Finder' : 'Start the Product Finder'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 const FinderView = ({ lang, nav }) => {
   const [step, setStep] = useState(0)
   const [skinType, setSkinType] = useState(null)
@@ -942,97 +1164,9 @@ const FinderView = ({ lang, nav }) => {
                 {lang === 'fr' ? 'Étape par étape, matin et soir, adaptée à votre profil.' : 'Step by step, morning and evening, tailored to your profile.'}
               </p>
 
-              {[
-                { key: 'morning', icon: <Sun className="h-5 w-5 text-amber-500" />, fr: 'Routine du matin', en: 'Morning routine', bg: 'bg-amber-50 border-amber-100' },
-                { key: 'evening', icon: <Moon className="h-5 w-5 text-indigo-500" />, fr: 'Routine du soir', en: 'Evening routine', bg: 'bg-indigo-50 border-indigo-100' },
-              ].map((section) => (
-                <div key={section.key} data-testid={`routine-${section.key}`} className={`rounded-2xl border ${section.bg} p-4 md:p-5 mb-5`}>
-                  <p className="font-bold text-stone-900 flex items-center gap-2 mb-4">
-                    {section.icon} {section[lang]}
-                  </p>
-                  <div className="space-y-2.5">
-                    {(routine?.[section.key] || []).map((s) => {
-                      const hints = {
-                        cleanser: { fr: 'Nettoyez votre visage en douceur', en: 'Gently cleanse your face' },
-                        serum: { fr: 'Appliquez le sérum ciblé', en: 'Apply your targeted serum' },
-                        moisturizer: { fr: 'Hydratez et renforcez la barrière cutanée', en: 'Moisturize and support the skin barrier' },
-                        sunscreen: { fr: 'Terminez par la protection solaire', en: 'Finish with sun protection' },
-                      }
-                      return (
-                        <div key={`${section.key}-${s.order}`} data-testid={`routine-step-${section.key}-${s.category}`}
-                          className="flex gap-3 items-center bg-white rounded-xl border border-stone-200 p-3 cursor-pointer hover:shadow-md transition-all"
-                          onClick={() => nav('product', s.product.slug)}>
-                          <div className="flex flex-col items-center shrink-0">
-                            <span className="h-7 w-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center">{s.order}</span>
-                          </div>
-                          <img src={s.product.image} alt={s.product.name} className="h-14 w-14 md:h-16 md:w-16 rounded-lg object-cover shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
-                              {label(CATEGORIES, s.category, lang)} — {hints[s.category]?.[lang]}
-                            </p>
-                            <p className="font-semibold text-stone-900 text-sm leading-snug truncate">{s.product.name}</p>
-                            <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
-                              <span className="text-[11px] text-stone-400 uppercase tracking-wide">{s.product.brand_name}</span>
-                              <span className="text-xs font-bold text-stone-900">{s.product.price_eur?.toFixed(2)} €</span>
-                              <span className="text-[11px] font-semibold text-emerald-700">{s.product.match_percent}% match</span>
-                            </div>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-stone-300 shrink-0" />
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {(routine?.warnings?.[section.key] || []).map((w, wi) => (
-                    <div key={wi} data-testid={`routine-warning-${section.key}-${wi}`}
-                      className={`mt-3 rounded-xl border p-3 flex gap-2.5 ${w.severity === 'high' ? 'bg-red-50 border-red-200' : w.severity === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
-                      <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${w.severity === 'high' ? 'text-red-600' : w.severity === 'medium' ? 'text-amber-600' : 'text-stone-500'}`} />
-                      <div>
-                        <p className={`text-xs font-bold ${w.severity === 'high' ? 'text-red-800' : w.severity === 'medium' ? 'text-amber-800' : 'text-stone-700'}`}>
-                          {w.title?.[lang]}
-                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide font-bold ${w.severity === 'high' ? 'bg-red-200 text-red-800' : w.severity === 'medium' ? 'bg-amber-200 text-amber-800' : 'bg-stone-200 text-stone-600'}`}>
-                            {w.severity === 'high' ? (lang === 'fr' ? 'Risque élevé' : 'High risk') : w.severity === 'medium' ? (lang === 'fr' ? 'Attention' : 'Caution') : 'Info'}
-                          </span>
-                        </p>
-                        <p className="text-xs mt-1 text-stone-600 leading-relaxed">{w.message?.[lang]}</p>
-                        <p className="text-[11px] text-stone-400 mt-1">{(w.products || []).join(' + ')}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {(routine?.warnings?.[section.key] || []).length === 0 && (
-                    <p data-testid={`routine-noconflict-${section.key}`} className="mt-3 text-xs text-emerald-700 flex items-center gap-1.5">
-                      <ShieldCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? "Aucun conflit d'actifs détecté dans cette routine" : 'No active-ingredient conflicts detected in this routine'}
-                    </p>
-                  )}
-                  <p className="text-xs text-stone-500 mt-3 text-right">
-                    {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-bold text-stone-800">
-                      {(routine?.[section.key] || []).reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €
-                    </span>
-                  </p>
-                </div>
-              ))}
+              <RoutineDisplay routine={routine} alternatives={alternatives} lang={lang} nav={nav} />
 
-              {alternatives.length > 0 && (
-                <div className="mt-7">
-                  <p className="font-semibold text-stone-900 mb-3">{lang === 'fr' ? 'Autres produits qui correspondent à votre profil' : 'Other products matching your profile'}</p>
-                  <div className="grid gap-2.5">
-                    {alternatives.map((p) => (
-                      <Card key={p.slug} data-testid={`finder-alt-${p.slug}`} className="border-stone-200 hover:shadow-md transition-all cursor-pointer" onClick={() => nav('product', p.slug)}>
-                        <CardContent className="p-3 flex gap-3 items-center">
-                          <img src={p.image} alt={p.name} className="h-12 w-12 rounded-lg object-cover" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] uppercase tracking-wider text-stone-400">{p.brand_name}</p>
-                            <p className="font-semibold text-stone-900 text-sm truncate">{p.name}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-bold">{p.price_eur?.toFixed(2)} €</p>
-                            <p className="text-[11px] font-semibold text-emerald-700">{p.match_percent}%</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <ShareRoutine routine={routine} alternatives={alternatives} profile={{ skin_type: skinType, concerns, budget }} lang={lang} />
 
               <Button data-testid="finder-restart" variant="outline" className="border-stone-300 mt-6 w-full" onClick={reset}>
                 {lang === 'fr' ? 'Recommencer le quiz' : 'Restart the quiz'}
@@ -1752,6 +1886,7 @@ function App() {
         {v === 'brand' && <BrandDetailView slug={route.param} lang={lang} nav={nav} />}
         {v === 'compare' && <CompareView lang={lang} nav={nav} products={products} compareA={compareA} setCompareA={setCompareA} />}
         {v === 'finder' && <FinderView lang={lang} nav={nav} />}
+        {v === 'routine' && <SharedRoutineView id={route.param} lang={lang} nav={nav} />}
         {v === 'learn' && <LearnView lang={lang} nav={nav} articles={articles} />}
         {v === 'article' && <ArticleDetailView slug={route.param} lang={lang} nav={nav} />}
         {v === 'for-brands' && <ForBrandsView lang={lang} />}

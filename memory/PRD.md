@@ -30,6 +30,7 @@ Articles CMS déjà présents (admin), ajouter : génération assistée IA (Emer
 
 ### 🔜 Étape 3 — Conversion
 Affiliate links management, Product Finder extended to hair/wellness, newsletter signup + admin export.
+- ✅ Partage de routine (Share Routine): POST /api/routines (snapshot routine+alternatives+profile → id court unique) + GET /api/routines/:id. Frontend: bouton "Partager ma routine" dans le Finder (lien #/routine/{id}, copie presse-papiers + partage natif), page SharedRoutineView en lecture seule (RoutineDisplay réutilisé, badges profil, CTA Finder). Backend testé 44/44.
 
 ### 🔜 Étape 4 — B2B Market Entry
 "For German brands" landing (localization, leads, distributors services), B2B lead form + admin lead management (basic leads already exist).

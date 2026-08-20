@@ -313,7 +313,41 @@ agent_communication:
     message: "✓ V2 catalog expansion backend testing complete - ALL 93 tests passed (100% success rate). The 3-vertical catalog (skincare/hair/wellness) is working perfectly. All test scenarios verified: (1) 30 products total with correct vertical distribution (14/8/8), (2) vertical filters working correctly, (3) all filter combinations working (hair+hair-loss, wellness+supplement, sleep concern, hair+shampoo), (4) product detail with ingredient_details and brand object, (5) 11 brands all with manufacturer and certifications fields, (6) 24 ingredients with regulatory fields for new ingredients, (7) POST /api/finder with vertical=skincare returns ONLY skincare products (no cross-contamination with hair/wellness products), (8) all regressions passed (compare, leads, admin auth, admin stats, admin CRUD). Versioned re-seed (seed_version=2) working correctly. No critical issues found. Backend API is production-ready for V2 catalog expansion."
 
 backend:
-  - task: "Étape 2 - Content hubs: 15 hubs seeded (SEED_VERSION=3, seed data in /app/lib/seed-hubs.js) one per concern (6 skincare, 4 hair, 5 wellness). Hub doc: {slug=concern id, vertical, title{fr,en}, definition{fr,en}, causes{fr:[],en:[]}, mistakes{fr:[],en:[]}, buying_guide{fr:[],en:[]}, key_ingredients[slugs], faqs[{q{fr,en},a{fr,en}}]}. Endpoints: GET /api/hubs (list, ?vertical filter), GET /api/hubs/:slug (hub + products matching concern sorted by rating desc + ingredient_details). 'hubs' added to ADMIN_COLLECTIONS (full CRUD) and admin stats now returns hubs count."
+  - task: "Share routine: POST /api/routines (saves routine snapshot {routine, alternatives, profile}, returns short unique id, 400 if routine missing/empty), GET /api/routines/:id (returns saved doc, 404 if not found)"
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoints for shareable routine links. POST stores routine snapshot in 'routines' collection with 10-char id (uuid slice). GET retrieves by id with NOID projection. Please test: (1) POST /api/routines with a valid routine body {routine:{morning:[{order,category,product}], evening:[...], warnings:{morning:[],evening:[]}}, alternatives:[], profile:{skin_type,concerns,budget}} returns 201 with {id} (short id). (2) GET /api/routines/{id} returns the same routine, alternatives, profile (no _id field). (3) POST with empty/missing routine returns 400. (4) GET /api/routines/nonexistent returns 404. (5) End-to-end: POST /api/finder to get a real routine, then POST /api/routines with it, then GET it back and confirm data matches. Do NOT test frontend."
+      - working: true
+        agent: "testing"
+        comment: "✓ PASSED - All 44 tests passed (100% success rate). Share routine feature working perfectly. (1) End-to-end happy path: POST /api/finder returns proper routine structure with morning (4 steps: cleanser→serum→moisturizer→sunscreen) and evening (3 steps: cleanser→serum→moisturizer) arrays, plus warnings object and alternatives array. POST /api/routines with the routine returns 201 with short ID (10 chars). GET /api/routines/{id} returns 200 with complete saved routine data. (2) Data integrity verified: Retrieved routine matches saved routine with all fields preserved (id, routine, alternatives, profile, created_at). NO _id field in response (NOID projection working). Morning and evening arrays preserved with product objects intact. Profile data matches (skin_type, concerns, budget). (3) Validation working correctly: Empty body {} returns 400. Missing routine field returns 400. Empty routine {morning:[], evening:[]} returns 400. (4) Not found handling: GET /api/routines/nonexistent-id-xyz returns 404 with error message. (5) Regressions passed: POST /api/finder still returns proper routine structure with morning/evening/warnings. GET /api/products returns 30 products. No critical issues found. Share routine feature is production-ready."
+
+frontend:
+  - task: "Share routine UI: ShareRoutine button in FinderView (POST /api/routines, builds #/routine/{id} link, copy-to-clipboard, native share), SharedRoutineView read-only page (GET /api/routines/:id, reused RoutineDisplay, profile badges, CTA to finder), new 'routine' hash route"
+    implemented: true
+    working: "NA"
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Refactored routine rendering into reusable RoutineDisplay. Added ShareRoutine (create link + copy) and SharedRoutineView. Not yet UI-tested; awaiting user go-ahead. IMPORTANT: /app/.env was missing (MONGO_URL undefined → 500 on all endpoints) — recreated with MONGO_URL, DB_NAME=dermalyze, NEXT_PUBLIC_BASE_URL, ADMIN_PASSWORD=admin123; app auto-reseeded."
+
+agent_communication:
+  - agent: "main"
+    message: "Feature: Partage Routine (shareable unique link). Added POST /api/routines and GET /api/routines/:id. Test backend ONLY as described in the new task above. Regression: ensure POST /api/finder still returns routine structure. Do NOT test frontend."
+  - agent: "testing"
+    message: "✓ Share routine backend testing complete - ALL 44 tests passed (100% success rate). The shareable routine feature is working perfectly. End-to-end flow verified: POST /api/finder → POST /api/routines → GET /api/routines/{id} works seamlessly. All validation scenarios pass (empty body, missing routine, empty routine arrays all return 400). Not found handling works (404 with error message). Data integrity confirmed: routine structure preserved with morning/evening arrays, product objects intact, NO _id field in responses, profile data matches. Regressions passed: finder and products endpoints still working correctly. No critical issues found. Feature is production-ready."
+
+ 15 hubs seeded (SEED_VERSION=3, seed data in /app/lib/seed-hubs.js) one per concern (6 skincare, 4 hair, 5 wellness). Hub doc: {slug=concern id, vertical, title{fr,en}, definition{fr,en}, causes{fr:[],en:[]}, mistakes{fr:[],en:[]}, buying_guide{fr:[],en:[]}, key_ingredients[slugs], faqs[{q{fr,en},a{fr,en}}]}. Endpoints: GET /api/hubs (list, ?vertical filter), GET /api/hubs/:slug (hub + products matching concern sorted by rating desc + ingredient_details). 'hubs' added to ADMIN_COLLECTIONS (full CRUD) and admin stats now returns hubs count."
     implemented: true
     working: true
     file: "app/api/[[...path]]/route.js"
