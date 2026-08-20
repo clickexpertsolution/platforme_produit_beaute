@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # ── Backend API (Express) ──────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URL: ${MONGO_URL}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      PORT: 4000
+    expose:
+      - '4000'
+
+  # ── Frontend (Next.js) ────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
+        BACKEND_URL: ${BACKEND_URL:-http://backend:4000}
+        # Base des URLs absolues (partage WhatsApp/réseaux sociaux, canonical,
+        # robots.txt, sitemap) : lue au build, la page d'accueil étant prérendue.
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-${PUBLIC_APP_URL}}
+    restart: unless-stopped
+    environment:
+      REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:4000}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-${PUBLIC_APP_URL}}
+      PORT: 3000
+    ports:
+      - '3000:3000'
+    depends_on:
+      - backend

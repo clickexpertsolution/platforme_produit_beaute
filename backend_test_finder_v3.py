@@ -10,7 +10,7 @@ import sys
 from typing import Dict, Any, Optional, List
 
 # Load base URL from environment
-BASE_URL = "https://ingredient-db.preview.emergentagent.com/api"
+BASE_URL = "https://multi-lang-ui-3.preview.emergentagent.com/api"
 
 class Colors:
     GREEN = '\033[92m'

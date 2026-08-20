@@ -1,31 +1,32 @@
+import express from 'express'
 import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
-import { NextResponse } from 'next/server'
 import { LlmChat, UserMessage } from 'emergentintegrations'
-import { SEED_HUBS } from '@/lib/seed-hubs'
-import { BRANDS_AR, INGREDIENTS_AR, PRODUCTS_AR, ARTICLES_AR, REELS_AR, HUBS_AR } from '@/lib/content-ar'
-import { mergeAr, arUpdateSet, mergeFaqs } from '@/lib/merge-ar'
+import { SEED_HUBS } from './lib/seed-hubs.js'
+import { BRANDS_AR, INGREDIENTS_AR, PRODUCTS_AR, ARTICLES_AR, REELS_AR, HUBS_AR } from './lib/content-ar.js'
+import { mergeAr, arUpdateSet, mergeFaqs } from './lib/merge-ar.js'
 
-export const runtime = 'nodejs'
+const app = express()
+app.use(express.json())
 
-// ============ BACKEND PROXY (Docker séparé) ============
-// Quand BACKEND_URL est défini, toutes les requêtes API sont proxifiées
-// vers le service backend Express au lieu d'être traitées localement.
-async function proxyToBackend(request, params) {
-  const { path = [] } = await params
-  const url = new URL(request.url)
-  const target = `${process.env.BACKEND_URL}/api/${path.join('/')}${url.search}`
-  const headers = {}
-  const auth = request.headers.get('authorization')
-  if (auth) headers['Authorization'] = auth
-  const isBody = !['GET', 'HEAD', 'OPTIONS'].includes(request.method)
-  if (isBody) headers['Content-Type'] = 'application/json'
-  const body = isBody ? await request.text().catch(() => null) : undefined
-  const resp = await fetch(target, { method: request.method, headers, body })
-  const data = await resp.json().catch(() => ({}))
-  return NextResponse.json(data, { status: resp.status })
-}
+// ============ CORS ============
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '*').split(',').map((o) => o.trim())
 
+app.use((req, res, next) => {
+  const origin = req.headers.origin || ''
+  if (ALLOWED_ORIGINS.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  } else if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') return res.status(200).json({})
+  next()
+})
+
+// ============ DATABASE ============
 let client = null
 let db = null
 
@@ -39,37 +40,8 @@ async function getDb() {
 
 const NOID = { projection: { _id: 0 } }
 
-// Recherche tolérante : construit une regex insensible aux accents et aux
-// espaces multiples à partir d'un terme utilisateur (ex. "rétinol", "acide  gras").
-const ACCENT_CLASS = { a: '[aàáâãäå]', c: '[cç]', e: '[eèéêë]', i: '[iìíîï]', n: '[nñ]', o: '[oòóôõö]', u: '[uùúûü]', y: '[yýÿ]' }
-function accentInsensitivePattern(term) {
-  const cleaned = String(term || '').trim().toLowerCase().replace(/['’`]/g, '')
-  const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return escaped
-    .replace(/[aceinouy]/g, (ch) => ACCENT_CLASS[ch] || ch)
-    .replace(/\s+/g, '\\s*')
-}
-// Slugifie un terme pour matcher les slugs d'ingrédients / ids de préoccupations
-// (ex. "acide salicylique" -> "acide-salicylique").
-function slugifyTerm(term) {
-  return String(term || '').trim().toLowerCase().normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/['’`]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-}
-
-function json(data, status = 200) {
-  return NextResponse.json(data, {
-    status,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  })
-}
-
-export async function OPTIONS() {
-  return json({})
+function send(res, data, status = 200) {
+  res.status(status).json(data)
 }
 
 // ============ SEED DATA ============
@@ -143,7 +115,6 @@ const SEED_ARTICLES = [
   { slug: 'niacinamide-que-dit-la-science', category: 'research', image: IMG.p8, published_at: '2025-06-10', title: { fr: 'Niacinamide : que dit vraiment la science ?', en: 'Niacinamide: what does the science really say?' }, excerpt: { fr: "Actif star des réseaux sociaux, la niacinamide est-elle à la hauteur ? Revue des études cliniques.", en: "Social media's star active — does niacinamide live up to the hype? A review of clinical studies." }, content: { fr: "La niacinamide (vitamine B3) est l'un des actifs cosmétiques les plus étudiés, avec plusieurs dizaines d'essais cliniques randomisés publiés.\n\nCe qui est solidement démontré : à 2-5%, elle réduit la production de sébum (étude de Draelos, 2006), améliore la barrière cutanée en stimulant la synthèse de céramides (Tanno, 2000), et atténue les hyperpigmentations en bloquant le transfert de mélanosomes (Hakozaki, 2002).\n\nCe qui est plausible mais moins prouvé : la réduction des pores visibles et des rides, observée dans des études plus petites ou financées par les industriels.\n\nCe qui est faux : le mythe selon lequel niacinamide et vitamine C ne peuvent pas être combinées. Cette croyance repose sur des études des années 1960 dans des conditions non réalistes (hautes températures).\n\nVerdict : un actif polyvalent, très bien toléré, au rapport bénéfice/risque excellent. À 5%, c'est l'un des meilleurs premiers actifs à introduire dans une routine.", en: "Niacinamide (vitamin B3) is one of the most studied cosmetic actives, with dozens of published randomized clinical trials.\n\nWhat is solidly proven: at 2-5%, it reduces sebum production (Draelos, 2006), improves the skin barrier by boosting ceramide synthesis (Tanno, 2000), and fades hyperpigmentation by blocking melanosome transfer (Hakozaki, 2002).\n\nWhat is plausible but less proven: the reduction of visible pores and wrinkles, observed in smaller or industry-funded studies.\n\nWhat is false: the myth that niacinamide and vitamin C cannot be combined. This belief is based on 1960s studies under unrealistic conditions (high temperatures).\n\nVerdict: a versatile, very well-tolerated active with an excellent benefit/risk ratio. At 5%, it is one of the best first actives to introduce into a routine." } },
 ]
 
-// ============ V2 EXPANSION: 3 verticals (skincare / hair / wellness), enriched brands & ingredients ============
 const BRAND_EXTRAS = {
   sebamed: { manufacturer: 'Sebapharma GmbH & Co. KG', certifications: ['Made in Germany', 'pH 5.5', 'Dermatologiquement testé'], verticals: ['skincare', 'hair'] },
   eucerin: { manufacturer: 'Beiersdorf AG', certifications: ['Made in Germany', 'Dermatologiquement testé', 'Non comédogène'], verticals: ['skincare', 'hair'] },
@@ -177,7 +148,6 @@ const NEW_INGREDIENTS = [
 ]
 
 const NEW_PRODUCTS = [
-  // ---- HAIR & SCALP ----
   { slug: 'alpecin-caffeine-shampoo-c1', name: 'Shampoing Caféine C1', brand_slug: 'alpecin', brand_name: 'Alpecin', vertical: 'hair', category: 'shampoo', price_eur: 8.9, rating: 4.3, image: IMG.h3, german_made: true, concerns: ['hair-loss'], skin_types: [], ingredients: ['cafeine', 'zinc-pca'], affiliate_url: 'https://www.alpecin.com', description: { fr: "Le shampoing à la caféine le plus vendu d'Allemagne. Le complexe caféine atteint le follicule en 120 secondes et énergise la racine pour freiner la chute héréditaire. Usage quotidien.", en: "Germany's best-selling caffeine shampoo. The caffeine complex reaches the follicle in 120 seconds and energizes the root to slow hereditary hair loss. Daily use." } },
   { slug: 'alpecin-liquid-hair-energizer', name: 'Caffeine Liquid — Tonique Cuir Chevelu', brand_slug: 'alpecin', brand_name: 'Alpecin', vertical: 'hair', category: 'scalp-serum', price_eur: 9.9, rating: 4.2, image: IMG.h5, german_made: true, concerns: ['hair-loss'], skin_types: [], ingredients: ['cafeine'], affiliate_url: 'https://www.alpecin.com', description: { fr: "Tonique sans rinçage à appliquer sur le cuir chevelu après le shampoing. La caféine agit 24h sur la racine. Idéal en complément du shampoing C1.", en: "Leave-in tonic applied to the scalp after shampooing. Caffeine works on the root for 24h. Ideal alongside the C1 shampoo." } },
   { slug: 'schwarzkopf-gliss-total-repair-shampoo', name: 'Gliss Total Repair Shampoing', brand_slug: 'schwarzkopf', brand_name: 'Schwarzkopf', vertical: 'hair', category: 'shampoo', price_eur: 5.5, rating: 4.1, image: IMG.h1, german_made: true, concerns: ['dry-hair'], skin_types: [], ingredients: ['panthenol', 'glycerine'], affiliate_url: 'https://www.schwarzkopf.com', description: { fr: "Shampoing réparateur à la kératine liquide pour cheveux secs et abîmés. Reconstruit la fibre capillaire et réduit la casse dès le premier lavage.", en: "Repairing shampoo with liquid keratin for dry, damaged hair. Rebuilds the hair fiber and reduces breakage from the first wash." } },
@@ -186,7 +156,6 @@ const NEW_PRODUCTS = [
   { slug: 'eucerin-dermocapillaire-uree', name: 'DermoCapillaire Shampoing Calmant 5% Urée', brand_slug: 'eucerin', brand_name: 'Eucerin', vertical: 'hair', category: 'shampoo', price_eur: 13.5, rating: 4.5, image: IMG.h3, german_made: true, concerns: ['sensitive-scalp', 'dry-hair'], skin_types: [], ingredients: ['uree', 'glycerine'], affiliate_url: 'https://www.eucerin.com', description: { fr: "Shampoing dermatologique à 5% d'urée pour cuir chevelu sec, irrité et qui démange. Sans parfum, apaise durablement dès les premières utilisations.", en: "Dermatological shampoo with 5% urea for dry, irritated, itchy scalp. Fragrance-free, provides lasting relief from the first uses." } },
   { slug: 'weleda-huile-cheveux-romarin', name: 'Huile Capillaire Revitalisante au Romarin', brand_slug: 'weleda', brand_name: 'Weleda', vertical: 'hair', category: 'hair-treatment', price_eur: 11.9, rating: 4.4, image: IMG.h4, german_made: false, concerns: ['dry-hair', 'hair-loss'], skin_types: [], ingredients: ['romarin'], affiliate_url: 'https://www.weleda.com', description: { fr: "Huile de soin traditionnelle au romarin bio qui fortifie les cheveux, nourrit les longueurs sèches et revitalise le cuir chevelu. Certifiée NATRUE.", en: "Traditional care oil with organic rosemary that strengthens hair, nourishes dry lengths and revitalizes the scalp. NATRUE certified." } },
   { slug: 'sebamed-everyday-shampoo', name: 'Shampoing Usage Fréquent pH 5.5', brand_slug: 'sebamed', brand_name: 'Sebamed', vertical: 'hair', category: 'shampoo', price_eur: 8.5, rating: 4.2, image: IMG.h2, german_made: true, concerns: ['sensitive-scalp'], skin_types: [], ingredients: ['panthenol', 'glycerine'], affiliate_url: 'https://www.sebamed.com', description: { fr: "Shampoing ultra-doux sans savon pour lavages fréquents. Le pH 5.5 protège le film hydrolipidique du cuir chevelu sensible. Convient à toute la famille.", en: "Ultra-gentle soap-free shampoo for frequent washing. pH 5.5 protects the sensitive scalp's hydrolipidic film. Suitable for the whole family." } },
-  // ---- WELLNESS ----
   { slug: 'doppelherz-magnesium-400', name: 'Magnésium 400 + B12 Comprimés', brand_slug: 'doppelherz', brand_name: 'Doppelherz', vertical: 'wellness', category: 'supplement', price_eur: 6.9, rating: 4.5, image: IMG.w2, german_made: true, concerns: ['stress', 'energy'], skin_types: [], ingredients: ['magnesium'], affiliate_url: 'https://www.doppelherz.com', description: { fr: "400 mg de magnésium + vitamine B12 par comprimé. Contribue à réduire la fatigue et soutient muscles et système nerveux. Le best-seller allemand du magnésium.", en: "400 mg of magnesium + vitamin B12 per tablet. Helps reduce fatigue and supports muscles and the nervous system. Germany's best-selling magnesium." } },
   { slug: 'doppelherz-vitamin-d3-2000', name: 'Vitamine D3 2000 U.I.', brand_slug: 'doppelherz', brand_name: 'Doppelherz', vertical: 'wellness', category: 'supplement', price_eur: 7.5, rating: 4.6, image: IMG.w1, german_made: true, concerns: ['immunity', 'energy'], skin_types: [], ingredients: ['vitamine-d3'], affiliate_url: 'https://www.doppelherz.com', description: { fr: "Vitamine D3 hautement dosée (2000 U.I.) pour le système immunitaire, les os et les muscles. Un comprimé tous les deux jours suffit. Fabriqué selon les normes pharmaceutiques allemandes.", en: "High-dose vitamin D3 (2000 IU) for the immune system, bones and muscles. One tablet every other day is enough. Made to German pharmaceutical standards." } },
   { slug: 'doppelherz-melatonin-spray', name: 'Mélatonine Spray Nuit', brand_slug: 'doppelherz', brand_name: 'Doppelherz', vertical: 'wellness', category: 'supplement', price_eur: 9.9, rating: 4.3, image: IMG.w1, german_made: true, concerns: ['sleep'], skin_types: [], ingredients: ['melatonine', 'lavande'], affiliate_url: 'https://www.doppelherz.com', description: { fr: "Spray sublingual à 1 mg de mélatonine et arôme lavande-mélisse. Réduit le temps d'endormissement — à vaporiser juste avant le coucher. Action rapide.", en: "Sublingual spray with 1 mg melatonin and lavender-lemon balm flavor. Reduces sleep onset time — spray just before bedtime. Fast acting." } },
@@ -258,62 +227,7 @@ const ALL_REELS = mergeAr(SEED_REELS, REELS_AR)
 // (efface les anciens reels de démo et réinsère SEED_REELS).
 const REELS_VERSION = 5
 
-// ============ ENRICHISSEMENT FICHE PRODUIT (contenu de démonstration) ============
-// Références d'études par ingrédient : quelques liens réels pour les actifs
-// connus, repli générique (recherche PubMed) sinon. Illustratif (démo).
-const INGREDIENT_STUDIES = {
-  niacinamide: [{ title: { fr: 'Niacinamide topique et fonction barrière', en: 'Topical niacinamide and skin barrier', ar: 'النياسيناميد الموضعي ووظيفة حاجز البشرة' }, source: 'Br J Dermatol', year: 2000, url: 'https://pubmed.ncbi.nlm.nih.gov/10971324/' }],
-  retinol: [{ title: { fr: 'Rétinol et photo-vieillissement (essai contrôlé)', en: 'Retinol and photoaging (controlled trial)', ar: 'الريتينول والشيخوخة الضوئية (تجربة مُحكَمة)' }, source: 'Arch Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17515510/' }],
-  'vitamine-c': [{ title: { fr: 'Vitamine C topique en dermatologie', en: 'Topical vitamin C in dermatology', ar: 'فيتامين C الموضعي في طبّ الجلد' }, source: 'Indian Dermatol Online J', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23741676/' }],
-  'acide-salicylique': [{ title: { fr: "Acide salicylique dans l'acné", en: 'Salicylic acid in acne', ar: 'حمض الساليسيليك في علاج حبّ الشباب' }, source: 'J Clin Aesthet Dermatol', year: 2015, url: 'https://pubmed.ncbi.nlm.nih.gov/26155326/' }],
-  'acide-hyaluronique': [{ title: { fr: 'Acide hyaluronique et hydratation cutanée', en: 'Hyaluronic acid and skin hydration', ar: 'حمض الهيالورونيك وترطيب البشرة' }, source: 'J Drugs Dermatol', year: 2011, url: 'https://pubmed.ncbi.nlm.nih.gov/21607255/' }],
-  cafeine: [{ title: { fr: 'Caféine et follicule pileux', en: 'Caffeine and the hair follicle', ar: 'الكافيين والجُريب الشعري' }, source: 'Int J Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17214716/' }],
-  ceramides: [{ title: { fr: 'Céramides et réparation de la barrière', en: 'Ceramides and barrier repair', ar: 'السيراميد وإصلاح حاجز البشرة' }, source: 'J Clin Aesthet Dermatol', year: 2014, url: 'https://pubmed.ncbi.nlm.nih.gov/25276273/' }],
-  melatonine: [{ title: { fr: 'Mélatonine et sommeil (méta-analyse)', en: 'Melatonin and sleep (meta-analysis)', ar: 'الميلاتونين والنوم (تحليل بعدي)' }, source: 'PLoS One', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23691095/' }],
-  biotine: [{ title: { fr: 'Biotine et santé des phanères (revue)', en: 'Biotin and hair/nail health (review)', ar: 'البيوتين وصحّة الشعر والأظافر (مراجعة)' }, source: 'Skin Appendage Disord', year: 2017, url: 'https://pubmed.ncbi.nlm.nih.gov/28879195/' }],
-}
-function studiesForIngredient(i) {
-  return INGREDIENT_STUDIES[i.slug] || [{
-    title: { fr: `Revue des données cliniques : ${i.name}`, en: `Review of clinical evidence: ${i.name}`, ar: `مراجعة المعطيات السريرية: ${i.name}` },
-    source: 'PubMed', year: 2019,
-    url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(i.inci || i.name)}`,
-  }]
-}
-function certificationsForProduct(p, brand) {
-  const certs = [{ name: { fr: 'Testé dermatologiquement', en: 'Dermatologically tested', ar: 'مُختبَر تحت إشراف أطباء الجلد' }, scope: 'EU' }]
-  if (p.german_made || (brand && brand.german)) certs.push({ name: { fr: 'Fabriqué en Allemagne', en: 'Made in Germany', ar: 'صُنع في ألمانيا' }, scope: 'EU' })
-  if (p.vertical === 'skincare') certs.push({ name: { fr: 'Non comédogène (testé)', en: 'Non-comedogenic (tested)', ar: 'لا يسدّ المسام (مُختبَر)' }, scope: 'EU' })
-  if (p.vertical === 'wellness') certs.push({ name: { fr: 'Conforme EFSA', en: 'EFSA-compliant', ar: 'مطابق لمعايير EFSA' }, scope: 'EU' })
-  certs.push({ name: { fr: 'Sans cruauté (Leaping Bunny)', en: 'Cruelty-free (Leaping Bunny)', ar: 'خالٍ من التجارب على الحيوانات (Leaping Bunny)' }, scope: 'global' })
-  if ((p.rating || 0) >= 4.5) certs.push({ name: { fr: 'Enregistré FDA (OTC)', en: 'FDA-registered (OTC)', ar: 'مُسجَّل لدى FDA (OTC)' }, scope: 'US' })
-  return certs
-}
-function awardsForProduct(p) {
-  if ((p.rating || 0) >= 4.6) return [{ year: 2026, title: { fr: 'Label 2026 — Meilleur produit certifié', en: '2026 Label — Best Certified Product', ar: 'علامة 2026 — أفضل منتج معتمد' } }]
-  if ((p.rating || 0) >= 4.3) return [{ year: 2026, title: { fr: 'Sélection 2026 — Recommandé par les experts', en: '2026 Selection — Expert Recommended', ar: 'اختيار 2026 — موصى به من الخبراء' } }]
-  return []
-}
-function studiesForProduct(p) {
-  return [{
-    title: { fr: `Évaluation clinique de tolérance — ${p.name}`, en: `Clinical tolerance assessment — ${p.name}`, ar: `تقييم سريري للتحمّل — ${p.name}` },
-    source: 'Demo Clinical Report', year: 2025,
-    url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(p.name)}`,
-    summary: { fr: 'Étude de tolérance et de satisfaction sur 4 semaines (contenu de démonstration).', en: '4-week tolerance and satisfaction study (demo content).', ar: 'دراسة تحمّل ورضا على مدى أربعة أسابيع (محتوى توضيحي).' },
-  }]
-}
-// Ajoute des actifs complémentaires existants aux fiches skincare qui en ont peu.
-const COMPLEMENTARY_ACTIVES = ['glycerine', 'panthenol', 'squalane', 'aloe-vera']
-function enrichKeyIngredients(p, validSlugs) {
-  const cur = Array.isArray(p.ingredients) ? [...p.ingredients] : []
-  if (p.vertical !== 'skincare' || cur.length >= 4) return cur
-  for (const s of COMPLEMENTARY_ACTIVES) {
-    if (cur.length >= 4) break
-    if (!cur.includes(s) && validSlugs.has(s)) cur.push(s)
-  }
-  return cur
-}
-
-const SEED_VERSION = 4
+const SEED_VERSION = 3
 
 async function seedIfEmpty(database) {
   const before = await database.collection('meta').findOneAndUpdate(
@@ -324,18 +238,9 @@ async function seedIfEmpty(database) {
   if (before && before.version >= SEED_VERSION) return
   const now = new Date().toISOString()
   await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs'].map((c) => database.collection(c).deleteMany({})))
-  const validSlugs = new Set(ALL_INGREDIENTS.map((i) => i.slug))
-  const brandBySlug = Object.fromEntries(ALL_BRANDS.map((b) => [b.slug, b]))
   await database.collection('brands').insertMany(ALL_BRANDS.map((b) => ({ ...b, id: uuidv4(), created_at: now })))
-  await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, studies: studiesForIngredient(i), id: uuidv4(), created_at: now })))
-  await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({
-    ...p,
-    ingredients: enrichKeyIngredients(p, validSlugs),
-    certifications: certificationsForProduct(p, brandBySlug[p.brand_slug]),
-    awards: awardsForProduct(p),
-    studies: studiesForProduct(p),
-    id: uuidv4(), created_at: now,
-  })))
+  await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, id: uuidv4(), created_at: now })))
+  await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({ ...p, id: uuidv4(), created_at: now })))
   await database.collection('articles').insertMany(ALL_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
 }
@@ -467,8 +372,8 @@ async function runReelsSeed(database) {
   }
 }
 
-async function requireAdmin(request, database) {
-  const auth = request.headers.get('authorization') || ''
+async function requireAdmin(req, database) {
+  const auth = req.headers['authorization'] || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
   if (!token) return null
   return await database.collection('sessions').findOne({ token })
@@ -481,29 +386,17 @@ const INGREDIENT_CONFLICTS = [
   {
     pair: ['retinol', 'acide-salicylique'], severity: 'high',
     title: { fr: 'Rétinol + Acide salicylique', en: 'Retinol + Salicylic acid', ar: 'ريتينول + حمض الساليسيليك' },
-    message: {
-      fr: "Risque élevé d'irritation et de dessèchement lorsqu'ils sont appliqués dans la même session. Alternez : BHA un soir, rétinol le soir suivant.",
-      en: 'High risk of irritation and dryness when applied in the same session. Alternate: BHA one evening, retinol the next.',
-      ar: 'خطر مرتفع للتهيّج والجفاف عند وضعهما في الجلسة نفسها. ناوب بينهما: حمض BHA ليلة، والريتينول الليلة التالية.',
-    },
+    message: { fr: "Risque élevé d'irritation et de dessèchement lorsqu'ils sont appliqués dans la même session. Alternez : BHA un soir, rétinol le soir suivant.", en: 'High risk of irritation and dryness when applied in the same session. Alternate: BHA one evening, retinol the next.', ar: 'خطر مرتفع للتهيّج والجفاف عند وضعهما في الجلسة نفسها. ناوب بينهما: حمض BHA ليلة، والريتينول الليلة التالية.' },
   },
   {
     pair: ['retinol', 'vitamine-c'], severity: 'medium',
     title: { fr: 'Rétinol + Vitamine C pure', en: 'Retinol + Pure vitamin C', ar: 'ريتينول + فيتامين C النقي' },
-    message: {
-      fr: "Leurs pH optimaux sont incompatibles et le cumul peut irriter. Préférez la vitamine C le matin et le rétinol le soir.",
-      en: 'Their optimal pH levels are incompatible and combining them can irritate. Use vitamin C in the morning and retinol at night.',
-      ar: 'درجتا الحموضة المثلى لهما غير متوافقتين، والجمع بينهما قد يهيّج البشرة. استعمل فيتامين C صباحًا والريتينول مساءً.',
-    },
+    message: { fr: "Leurs pH optimaux sont incompatibles et le cumul peut irriter. Préférez la vitamine C le matin et le rétinol le soir.", en: 'Their optimal pH levels are incompatible and combining them can irritate. Use vitamin C in the morning and retinol at night.', ar: 'درجتا الحموضة المثلى لهما غير متوافقتين، والجمع بينهما قد يهيّج البشرة. استعمل فيتامين C صباحًا والريتينول مساءً.' },
   },
   {
     pair: ['acide-salicylique', 'vitamine-c'], severity: 'medium',
     title: { fr: 'Acide salicylique + Vitamine C pure', en: 'Salicylic acid + Pure vitamin C', ar: 'حمض الساليسيليك + فيتامين C النقي' },
-    message: {
-      fr: "Deux actifs acides dans la même session augmentent le risque de picotements et de rougeurs. Espacez les applications ou alternez matin/soir.",
-      en: 'Two acidic actives in the same session increase the risk of stinging and redness. Space out applications or alternate morning/evening.',
-      ar: 'مادّتان حمضيتان في الجلسة نفسها ترفعان خطر الوخز والاحمرار. باعد بين الاستعمالين أو ناوب بين الصباح والمساء.',
-    },
+    message: { fr: "Deux actifs acides dans la même session augmentent le risque de picotements et de rougeurs. Espacez les applications ou alternez matin/soir.", en: 'Two acidic actives in the same session increase the risk of stinging and redness. Space out applications or alternate morning/evening.', ar: 'مادّتان حمضيتان في الجلسة نفسها ترفعان خطر الوخز والاحمرار. باعد بين الاستعمالين أو ناوب بين الصباح والمساء.' },
   },
 ]
 
@@ -511,26 +404,17 @@ const LAYERING_ACTIVES = {
   'acide-salicylique': {
     severity: 'medium',
     title: { fr: 'Acide salicylique en double', en: 'Doubled salicylic acid' },
-    message: {
-      fr: "Plusieurs produits de cette routine contiennent de l'acide salicylique : risque de sur-exfoliation. Commencez par un seul produit BHA, puis augmentez progressivement si la peau tolère.",
-      en: 'Several products in this routine contain salicylic acid: risk of over-exfoliation. Start with a single BHA product, then increase gradually if your skin tolerates it.',
-    },
+    message: { fr: "Plusieurs produits de cette routine contiennent de l'acide salicylique : risque de sur-exfoliation. Commencez par un seul produit BHA, puis augmentez progressivement si la peau tolère.", en: 'Several products in this routine contain salicylic acid: risk of over-exfoliation. Start with a single BHA product, then increase gradually if your skin tolerates it.' },
   },
   'retinol': {
     severity: 'high',
     title: { fr: 'Rétinol en double', en: 'Doubled retinol' },
-    message: {
-      fr: "Plusieurs produits de cette routine contiennent du rétinol : risque important d'irritation. N'utilisez qu'un seul produit au rétinol par session.",
-      en: 'Several products in this routine contain retinol: significant risk of irritation. Use only one retinol product per session.',
-    },
+    message: { fr: "Plusieurs produits de cette routine contiennent du rétinol : risque important d'irritation. N'utilisez qu'un seul produit au rétinol par session.", en: 'Several products in this routine contain retinol: significant risk of irritation. Use only one retinol product per session.' },
   },
   'vitamine-c': {
     severity: 'low',
     title: { fr: 'Vitamine C en double', en: 'Doubled vitamin C' },
-    message: {
-      fr: "Plusieurs produits contiennent de la vitamine C : inutile de cumuler, un seul suffit pour un effet optimal.",
-      en: 'Several products contain vitamin C: no need to stack them, one is enough for optimal effect.',
-    },
+    message: { fr: "Plusieurs produits contiennent de la vitamine C : inutile de cumuler, un seul suffit pour un effet optimal.", en: 'Several products contain vitamin C: no need to stack them, one is enough for optimal effect.' },
   },
 }
 
@@ -556,30 +440,36 @@ function detectConflicts(steps) {
   return warnings.sort((a, b) => order[a.severity] - order[b.severity])
 }
 
-// ============ GET ============
-export async function GET(request, { params }) {
-  if (process.env.BACKEND_URL) return proxyToBackend(request, params)
+// ============ PATH HELPER ============
+function parsePath(req) {
+  const p = req.path.replace(/^\//, '')
+  return p ? p.split('/') : []
+}
+
+// ============ ROUTER ============
+const router = express.Router()
+
+// GET
+router.get('/*', async (req, res) => {
   try {
-    const { path = [] } = await params
+    const path = parsePath(req)
     const database = await getDb()
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
     await backfillArabic(database)
-    const url = new URL(request.url)
-    const q = Object.fromEntries(url.searchParams)
+    const q = req.query
 
     if (path.length === 0 || path[0] === 'root') {
-      return json({ status: 'ok', service: 'dermalyze-api' })
+      return send(res, { status: 'ok', service: 'dermalyze-api' })
     }
 
-    // ---- PRODUCTS ----
     if (path[0] === 'products') {
       if (path[1]) {
         const product = await database.collection('products').findOne({ slug: path[1] }, NOID)
-        if (!product) return json({ error: 'Product not found' }, 404)
+        if (!product) return send(res, { error: 'Product not found' }, 404)
         const ingredientDetails = await database.collection('ingredients').find({ slug: { $in: product.ingredients || [] } }, NOID).toArray()
         const brand = await database.collection('brands').findOne({ slug: product.brand_slug }, NOID)
-        return json({ ...product, ingredient_details: ingredientDetails, brand })
+        return send(res, { ...product, ingredient_details: ingredientDetails, brand })
       }
       const filter = {}
       if (q.vertical) filter.vertical = q.vertical
@@ -588,86 +478,69 @@ export async function GET(request, { params }) {
       if (q.skin_type) filter.skin_types = q.skin_type
       if (q.brand) filter.brand_slug = q.brand
       if (q.german === 'true') filter.german_made = true
-      if (q.search) {
-        const pat = accentInsensitivePattern(q.search)
-        const slug = slugifyTerm(q.search)
-        filter.$or = [
-          { name: { $regex: pat, $options: 'i' } },
-          { brand_name: { $regex: pat, $options: 'i' } },
-          { slug: { $regex: slug, $options: 'i' } },
-          { ingredients: { $regex: slug, $options: 'i' } },
-          { concerns: { $regex: slug, $options: 'i' } },
-          { 'description.fr': { $regex: pat, $options: 'i' } },
-          { 'description.en': { $regex: pat, $options: 'i' } },
-        ]
-      }
+      if (q.search) filter.$or = [{ name: { $regex: q.search, $options: 'i' } }, { brand_name: { $regex: q.search, $options: 'i' } }]
       const products = await database.collection('products').find(filter, NOID).limit(parseInt(q.limit || '100')).toArray()
-      return json({ products, total: products.length })
+      return send(res, { products, total: products.length })
     }
 
-    // ---- INGREDIENTS ----
     if (path[0] === 'ingredients') {
       if (path[1]) {
         const ingredient = await database.collection('ingredients').findOne({ slug: path[1] }, NOID)
-        if (!ingredient) return json({ error: 'Ingredient not found' }, 404)
+        if (!ingredient) return send(res, { error: 'Ingredient not found' }, 404)
         const products = await database.collection('products').find({ ingredients: path[1] }, NOID).toArray()
-        return json({ ...ingredient, products })
+        return send(res, { ...ingredient, products })
       }
       const ingredients = await database.collection('ingredients').find({}, NOID).toArray()
-      return json({ ingredients, total: ingredients.length })
+      return send(res, { ingredients, total: ingredients.length })
     }
 
-    // ---- BRANDS ----
     if (path[0] === 'brands') {
       if (path[1]) {
         const brand = await database.collection('brands').findOne({ slug: path[1] }, NOID)
-        if (!brand) return json({ error: 'Brand not found' }, 404)
+        if (!brand) return send(res, { error: 'Brand not found' }, 404)
         const products = await database.collection('products').find({ brand_slug: path[1] }, NOID).toArray()
-        return json({ ...brand, products })
+        return send(res, { ...brand, products })
       }
       const filter = {}
       if (q.german === 'true') filter.german = true
       const brands = await database.collection('brands').find(filter, NOID).toArray()
-      return json({ brands, total: brands.length })
+      return send(res, { brands, total: brands.length })
     }
 
-    // ---- HUBS (content hubs by concern) ----
     if (path[0] === 'hubs') {
       if (path[1]) {
         const hub = await database.collection('hubs').findOne({ slug: path[1] }, NOID)
-        if (!hub) return json({ error: 'Hub not found' }, 404)
+        if (!hub) return send(res, { error: 'Hub not found' }, 404)
         const [products, ingredientDetails] = await Promise.all([
           database.collection('products').find({ concerns: path[1] }, NOID).sort({ rating: -1 }).toArray(),
           database.collection('ingredients').find({ slug: { $in: hub.key_ingredients || [] } }, NOID).toArray(),
         ])
-        return json({ ...hub, products, ingredient_details: ingredientDetails })
+        return send(res, { ...hub, products, ingredient_details: ingredientDetails })
       }
       const filter = {}
       if (q.vertical) filter.vertical = q.vertical
       const hubs = await database.collection('hubs').find(filter, NOID).toArray()
-      return json({ hubs, total: hubs.length })
+      return send(res, { hubs, total: hubs.length })
     }
 
-    // ---- ARTICLES ----
     if (path[0] === 'articles') {
       if (path[1]) {
         const article = await database.collection('articles').findOne({ slug: path[1] }, NOID)
-        if (!article) return json({ error: 'Article not found' }, 404)
-        return json(article)
+        if (!article) return send(res, { error: 'Article not found' }, 404)
+        return send(res, article)
       }
       const filter = {}
       if (q.category) filter.category = q.category
       if (q.all !== '1') filter.status = { $ne: 'draft' }
       const articles = await database.collection('articles').find(filter, NOID).sort({ published_at: -1 }).toArray()
-      return json({ articles, total: articles.length })
+      return send(res, { articles, total: articles.length })
     }
 
-    // ---- REELS ----
     if (path[0] === 'reels') {
       if (path[1]) {
         const reel = await database.collection('reels').findOne({ slug: path[1] }, NOID)
-        if (!reel) return json({ error: 'Reel not found' }, 404)
-        return json(reel)
+        if (!reel) return send(res, { error: 'Reel not found' }, 404)
+        return send(res, reel)
       }
       const filter = {}
       if (q.vertical) filter.vertical = q.vertical
@@ -675,38 +548,35 @@ export async function GET(request, { params }) {
       if (q.ingredient_slug) filter.ingredient_slug = q.ingredient_slug
       if (q.all !== '1') filter.status = { $ne: 'draft' }
       const reels = await database.collection('reels').find(filter, NOID).sort({ published_at: -1 }).toArray()
-      return json({ reels, total: reels.length })
+      return send(res, { reels, total: reels.length })
     }
 
-    // ---- COMPARE ----
     if (path[0] === 'compare') {
       const a = await database.collection('products').findOne({ slug: q.a }, NOID)
       const b = await database.collection('products').findOne({ slug: q.b }, NOID)
-      if (!a || !b) return json({ error: 'One or both products not found' }, 404)
+      if (!a || !b) return send(res, { error: 'One or both products not found' }, 404)
       const commonIngredients = (a.ingredients || []).filter((i) => (b.ingredients || []).includes(i))
       const allSlugs = [...new Set([...(a.ingredients || []), ...(b.ingredients || [])])]
       const ingredientDetails = await database.collection('ingredients').find({ slug: { $in: allSlugs } }, NOID).toArray()
-      return json({ a, b, common_ingredients: commonIngredients, ingredient_details: ingredientDetails })
+      return send(res, { a, b, common_ingredients: commonIngredients, ingredient_details: ingredientDetails })
     }
 
-    // ---- SHARED ROUTINES ----
     if (path[0] === 'routines' && path[1]) {
       const routineDoc = await database.collection('routines').findOne({ id: path[1] }, NOID)
-      if (!routineDoc) return json({ error: 'Routine not found' }, 404)
-      return json(routineDoc)
+      if (!routineDoc) return send(res, { error: 'Routine not found' }, 404)
+      return send(res, routineDoc)
     }
 
-    // ---- ADMIN ----
     if (path[0] === 'admin') {
-      const session = await requireAdmin(request, database)
-      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const session = await requireAdmin(req, database)
+      if (!session) return send(res, { error: 'Unauthorized' }, 401)
       if (path[1] === 'leads') {
         const leads = await database.collection('leads').find({}, NOID).sort({ created_at: -1 }).toArray()
-        return json({ leads, total: leads.length })
+        return send(res, { leads, total: leads.length })
       }
       if (path[1] === 'subscribers') {
         const subscribers = await database.collection('subscribers').find({}, NOID).sort({ created_at: -1 }).toArray()
-        return json({ subscribers, total: subscribers.length })
+        return send(res, { subscribers, total: subscribers.length })
       }
       if (path[1] === 'stats') {
         const [products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks] = await Promise.all([
@@ -719,37 +589,34 @@ export async function GET(request, { params }) {
           database.collection('subscribers').countDocuments(),
           database.collection('events').countDocuments({ type: 'affiliate_click' }),
         ])
-        return json({ products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks })
+        return send(res, { products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks })
       }
-      return json({ error: 'Not found' }, 404)
+      return send(res, { error: 'Not found' }, 404)
     }
 
-    return json({ error: 'Not found' }, 404)
+    return send(res, { error: 'Not found' }, 404)
   } catch (e) {
     console.error('GET error', e)
-    return json({ error: e.message }, 500)
+    return send(res, { error: e.message }, 500)
   }
-}
+})
 
-// ============ POST ============
-export async function POST(request, { params }) {
-  if (process.env.BACKEND_URL) return proxyToBackend(request, params)
+// POST
+router.post('/*', async (req, res) => {
   try {
-    const { path = [] } = await params
+    const path = parsePath(req)
     const database = await getDb()
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
     await backfillArabic(database)
-    const body = await request.json().catch(() => ({}))
+    const body = req.body || {}
 
-    // ---- PRODUCT FINDER ----
     if (path[0] === 'finder') {
       const { skin_type, concerns = [], budget = 'high', category, vertical = 'skincare', avoid_ingredients = [] } = body
       const filter = {}
       if (vertical) filter.vertical = vertical
       if (category) filter.category = category
       let products = await database.collection('products').find(filter, NOID).toArray()
-      // Exclude products containing any ingredient the user wants to avoid
       if (Array.isArray(avoid_ingredients) && avoid_ingredients.length) {
         products = products.filter((p) => !(p.ingredients || []).some((i) => avoid_ingredients.includes(i)))
       }
@@ -759,33 +626,18 @@ export async function POST(request, { params }) {
         .map((p) => {
           let score = 0
           const reasons = []
-          if (skin_type && (p.skin_types || []).includes(skin_type)) {
-            score += 30
-            reasons.push('skin_type')
-          }
+          if (skin_type && (p.skin_types || []).includes(skin_type)) { score += 30; reasons.push('skin_type') }
           const matched = (p.concerns || []).filter((c) => concerns.includes(c))
           score += matched.length * 25
           matched.forEach((c) => reasons.push(c))
-          if (p.price_eur <= budgetMax) {
-            score += 10
-            reasons.push('budget')
-          } else {
-            score -= 20
-          }
+          if (p.price_eur <= budgetMax) { score += 10; reasons.push('budget') } else { score -= 20 }
           score += Math.round((p.rating || 0) * 4)
-          return {
-            ...p, score, match_reasons: reasons, matched_concerns: matched,
-            match_percent: Math.min(99, Math.max(5, Math.round((score / maxScore) * 100))),
-          }
+          return { ...p, score, match_reasons: reasons, matched_concerns: matched, match_percent: Math.min(99, Math.max(5, Math.round((score / maxScore) * 100))) }
         })
         .sort((x, y) => y.score - x.score)
 
-      // Build vertical-aware step-by-step routine (best product per category)
       const bestOf = (cat, excludeSlugs = []) => scoredAll.find((p) => p.category === cat && !excludeSlugs.includes(p.slug)) || null
-      const buildSteps = (cats) => cats
-        .map((cat) => bestOf(cat))
-        .filter(Boolean)
-        .map((p, idx) => ({ order: idx + 1, category: p.category, product: p }))
+      const buildSteps = (cats) => cats.map((cat) => bestOf(cat)).filter(Boolean).map((p, idx) => ({ order: idx + 1, category: p.category, product: p }))
 
       let sections = []
       if (vertical === 'hair') {
@@ -820,197 +672,164 @@ export async function POST(request, { params }) {
       const routineSlugs = new Set(sections.flatMap((s) => s.steps.map((st) => st.product.slug)))
       const alternatives = scoredAll.filter((p) => !routineSlugs.has(p.slug) && p.score > 20).slice(0, 4)
       const results = scoredAll.filter((p) => p.score > 20).slice(0, 6)
-
-      // Canonical sections + backward-compatible morning/evening/warnings (skincare)
       const morningSec = sections.find((s) => s.id === 'morning')
       const eveningSec = sections.find((s) => s.id === 'evening')
       const routine = {
-        vertical,
-        sections,
+        vertical, sections,
         morning: morningSec ? morningSec.steps : [],
         evening: eveningSec ? eveningSec.steps : [],
         warnings: { morning: morningSec?.warnings || [], evening: eveningSec?.warnings || [] },
       }
-      return json({ routine, alternatives, results, total: results.length })
+      return send(res, { routine, alternatives, results, total: results.length })
     }
 
-    // ---- SAVE / SHARE A ROUTINE ----
     if (path[0] === 'routines') {
       const routine = body.routine
       const hasSteps = routine && (
         (Array.isArray(routine.sections) && routine.sections.some((s) => s.steps?.length)) ||
         routine.morning?.length || routine.evening?.length
       )
-      if (!hasSteps) {
-        return json({ error: 'routine is required' }, 400)
-      }
+      if (!hasSteps) return send(res, { error: 'routine is required' }, 400)
       const shortId = uuidv4().replace(/-/g, '').slice(0, 10)
-      const doc = {
-        id: shortId,
-        routine,
-        alternatives: Array.isArray(body.alternatives) ? body.alternatives : [],
-        profile: body.profile || {},
-        created_at: new Date().toISOString(),
-      }
+      const doc = { id: shortId, routine, alternatives: Array.isArray(body.alternatives) ? body.alternatives : [], profile: body.profile || {}, created_at: new Date().toISOString() }
       await database.collection('routines').insertOne({ ...doc })
-      return json({ id: shortId }, 201)
+      return send(res, { id: shortId }, 201)
     }
 
-    // ---- NEWSLETTER SIGNUP ----
     if (path[0] === 'newsletter') {
       const email = (body.email || '').trim().toLowerCase()
       const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-      if (!valid) return json({ error: 'valid email is required' }, 400)
+      if (!valid) return send(res, { error: 'valid email is required' }, 400)
       const existing = await database.collection('subscribers').findOne({ email })
-      if (existing) return json({ ok: true, already: true })
-      await database.collection('subscribers').insertOne({
-        id: uuidv4(), email, lang: body.lang || 'fr', source: body.source || 'site', created_at: new Date().toISOString(),
-      })
-      return json({ ok: true, already: false }, 201)
+      if (existing) return send(res, { ok: true, already: true })
+      await database.collection('subscribers').insertOne({ id: uuidv4(), email, lang: body.lang || 'fr', source: body.source || 'site', created_at: new Date().toISOString() })
+      return send(res, { ok: true, already: false }, 201)
     }
 
-    // ---- AFFILIATE / EVENT TRACKING ----
     if (path[0] === 'track') {
-      const evt = {
-        id: uuidv4(),
-        type: body.type || 'affiliate_click',
-        product_slug: body.product_slug || null,
-        vertical: body.vertical || null,
-        created_at: new Date().toISOString(),
-      }
+      const evt = { id: uuidv4(), type: body.type || 'affiliate_click', product_slug: body.product_slug || null, vertical: body.vertical || null, created_at: new Date().toISOString() }
       await database.collection('events').insertOne({ ...evt })
-      return json({ ok: true }, 201)
+      return send(res, { ok: true }, 201)
     }
 
-    // ---- LEADS ----
     if (path[0] === 'leads') {
-      if (!body.email || !body.brand_name) return json({ error: 'brand_name and email are required' }, 400)
-      const lead = {
-        id: uuidv4(),
-        brand_name: body.brand_name,
-        contact_name: body.contact_name || '',
-        email: body.email,
-        message: body.message || '',
-        created_at: new Date().toISOString(),
-      }
+      if (!body.email || !body.brand_name) return send(res, { error: 'brand_name and email are required' }, 400)
+      const lead = { id: uuidv4(), brand_name: body.brand_name, contact_name: body.contact_name || '', email: body.email, message: body.message || '', created_at: new Date().toISOString() }
       await database.collection('leads').insertOne({ ...lead })
-      return json(lead, 201)
+      return send(res, lead, 201)
     }
 
-    // ---- ADMIN LOGIN ----
     if (path[0] === 'admin' && path[1] === 'login') {
       const expected = process.env.ADMIN_PASSWORD || 'admin123'
-      if (body.password !== expected) return json({ error: 'Invalid password' }, 401)
+      if (body.password !== expected) return send(res, { error: 'Invalid password' }, 401)
       const token = uuidv4()
       await database.collection('sessions').insertOne({ token, created_at: new Date().toISOString() })
-      return json({ token })
+      return send(res, { token })
     }
 
-    // ---- ADMIN: AI CONTENT GENERATION ----
     if (path[0] === 'admin' && path[1] === 'generate') {
-      const session = await requireAdmin(request, database)
-      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const session = await requireAdmin(req, database)
+      if (!session) return send(res, { error: 'Unauthorized' }, 401)
       const key = process.env.EMERGENT_LLM_KEY
-      if (!key || !key.startsWith('sk-emergent-')) return json({ error: 'EMERGENT_LLM_KEY missing' }, 500)
+      if (!key || !key.startsWith('sk-emergent-')) return send(res, { error: 'EMERGENT_LLM_KEY missing' }, 500)
       const topic = (body.topic || '').trim()
-      if (topic.length < 3) return json({ error: 'topic is required (min 3 chars)' }, 400)
+      if (topic.length < 3) return send(res, { error: 'topic is required (min 3 chars)' }, 400)
       const vertical = body.vertical || 'skincare'
       const category = body.category || 'guide'
       const provider = process.env.LLM_PROVIDER || 'openai'
       const model = process.env.LLM_MODEL || 'gpt-4o-mini'
-
-      const system = `You are a trilingual (French/English/Arabic) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:
-{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"...","ar":"..."},"excerpt":{"fr":"...","en":"...","ar":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"],"ar":["para1","para2","para3"]}}
-Rules: FR, EN and AR must be natural and semantically equivalent (not word-for-word). The Arabic version is written in Modern Standard Arabic; keep brand names, INCI names and acronyms in Latin script. content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
+      const system = `You are a trilingual (French/English/Arabic) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:\n{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"...","ar":"..."},"excerpt":{"fr":"...","en":"...","ar":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"],"ar":["para1","para2","para3"]}}\nRules: FR, EN and AR must be natural and semantically equivalent (not word-for-word). The Arabic version is written in Modern Standard Arabic; keep brand names, INCI names and acronyms in Latin script. content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
       const prompt = `Topic: ${topic}\nUniverse/vertical: ${vertical}\nPreferred category: ${category}\nWrite the article now as JSON only.`
-
       try {
-        const chat = new LlmChat(key, `dermalyze-gen-${uuidv4()}`, system)
-          .withModel(provider, model)
-          .withParams({ temperature: 0.5, max_tokens: 2500 })
+        const chat = new LlmChat(key, `dermalyze-gen-${uuidv4()}`, system).withModel(provider, model).withParams({ temperature: 0.5, max_tokens: 2500 })
         const reply = await chat.sendMessage(new UserMessage({ text: prompt }))
         let raw = String(reply).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-        // Keep only the JSON object and strip raw control chars (unescaped newlines/tabs) that break JSON.parse
         const start = raw.indexOf('{'); const end = raw.lastIndexOf('}')
         if (start >= 0 && end > start) raw = raw.slice(start, end + 1)
         raw = raw.replace(/[\u0000-\u001F]+/g, ' ')
         let article
-        try { article = JSON.parse(raw) } catch { return json({ error: 'Model did not return valid JSON', raw }, 502) }
-        // Normalize content arrays -> joined paragraphs
+        try { article = JSON.parse(raw) } catch { return send(res, { error: 'Model did not return valid JSON', raw }, 502) }
         const joinContent = (c) => Array.isArray(c) ? c.join('\n\n') : (c || '')
         if (article.content) { article.content = { fr: joinContent(article.content.fr), en: joinContent(article.content.en), ar: joinContent(article.content.ar) } }
-        if (!article?.title?.fr || !article?.content?.fr) return json({ error: 'Incomplete generation', article }, 502)
+        if (!article?.title?.fr || !article?.content?.fr) return send(res, { error: 'Incomplete generation', article }, 502)
         article.vertical = vertical
         article.category = article.category || category
-        return json({ article })
+        return send(res, { article })
       } catch (e) {
         console.error('AI generate error', e?.message)
-        return json({ error: 'Generation failed', detail: e?.message }, 502)
+        return send(res, { error: 'Generation failed', detail: e?.message }, 502)
       }
     }
 
-    // ---- ADMIN CREATE ----
     if (path[0] === 'admin' && ADMIN_COLLECTIONS.includes(path[1])) {
-      const session = await requireAdmin(request, database)
-      if (!session) return json({ error: 'Unauthorized' }, 401)
-      if (!body.slug) return json({ error: 'slug is required' }, 400)
+      const session = await requireAdmin(req, database)
+      if (!session) return send(res, { error: 'Unauthorized' }, 401)
+      if (!body.slug) return send(res, { error: 'slug is required' }, 400)
       const existing = await database.collection(path[1]).findOne({ slug: body.slug })
-      if (existing) return json({ error: 'slug already exists' }, 409)
+      if (existing) return send(res, { error: 'slug already exists' }, 409)
       const doc = { ...body, id: uuidv4(), created_at: new Date().toISOString() }
       await database.collection(path[1]).insertOne({ ...doc })
       delete doc._id
-      return json(doc, 201)
+      return send(res, doc, 201)
     }
 
-    return json({ error: 'Not found' }, 404)
+    return send(res, { error: 'Not found' }, 404)
   } catch (e) {
     console.error('POST error', e)
-    return json({ error: e.message }, 500)
+    return send(res, { error: e.message }, 500)
   }
-}
+})
 
-// ============ PUT ============
-export async function PUT(request, { params }) {
-  if (process.env.BACKEND_URL) return proxyToBackend(request, params)
+// PUT
+router.put('/*', async (req, res) => {
   try {
-    const { path = [] } = await params
+    const path = parsePath(req)
     const database = await getDb()
-    const body = await request.json().catch(() => ({}))
+    const body = req.body || {}
 
     if (path[0] === 'admin' && ADMIN_COLLECTIONS.includes(path[1]) && path[2]) {
-      const session = await requireAdmin(request, database)
-      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const session = await requireAdmin(req, database)
+      if (!session) return send(res, { error: 'Unauthorized' }, 401)
       delete body._id
       delete body.id
       const result = await database.collection(path[1]).updateOne({ id: path[2] }, { $set: { ...body, updated_at: new Date().toISOString() } })
-      if (result.matchedCount === 0) return json({ error: 'Not found' }, 404)
+      if (result.matchedCount === 0) return send(res, { error: 'Not found' }, 404)
       const updated = await database.collection(path[1]).findOne({ id: path[2] }, NOID)
-      return json(updated)
+      return send(res, updated)
     }
-    return json({ error: 'Not found' }, 404)
+    return send(res, { error: 'Not found' }, 404)
   } catch (e) {
     console.error('PUT error', e)
-    return json({ error: e.message }, 500)
+    return send(res, { error: e.message }, 500)
   }
-}
+})
 
-// ============ DELETE ============
-export async function DELETE(request, { params }) {
-  if (process.env.BACKEND_URL) return proxyToBackend(request, params)
+// DELETE
+router.delete('/*', async (req, res) => {
   try {
-    const { path = [] } = await params
+    const path = parsePath(req)
     const database = await getDb()
 
     if (path[0] === 'admin' && [...ADMIN_COLLECTIONS, 'leads'].includes(path[1]) && path[2]) {
-      const session = await requireAdmin(request, database)
-      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const session = await requireAdmin(req, database)
+      if (!session) return send(res, { error: 'Unauthorized' }, 401)
       const result = await database.collection(path[1]).deleteOne({ id: path[2] })
-      if (result.deletedCount === 0) return json({ error: 'Not found' }, 404)
-      return json({ success: true })
+      if (result.deletedCount === 0) return send(res, { error: 'Not found' }, 404)
+      return send(res, { success: true })
     }
-    return json({ error: 'Not found' }, 404)
+    return send(res, { error: 'Not found' }, 404)
   } catch (e) {
     console.error('DELETE error', e)
-    return json({ error: e.message }, 500)
+    return send(res, { error: e.message }, 500)
   }
-}
+})
+
+app.use('/api', router)
+
+// Health check
+app.get('/health', (req, res) => res.json({ status: 'ok' }))
+
+const PORT = process.env.PORT || 4000
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend Dermalyze running on port ${PORT}`)
+})
