@@ -12,12 +12,14 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command'
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
   BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail,
   Scissors, HeartPulse, Factory, BadgeCheck, HelpCircle, ShoppingBag, ListChecks,
-  Share2, Copy, Play, ChevronUp, ChevronDown
+  Share2, Copy, Play, ChevronUp, ChevronDown, Trophy, Scale, Info, RefreshCw, ArrowLeftRight, Tag
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -1374,89 +1376,330 @@ const BrandDetailView = ({ slug, lang, nav }) => {
 }
 
 // ---------- Compare ----------
-const CompareView = ({ lang, nav, products, compareA, setCompareA }) => {
-  const [a, setA] = useState(compareA || '')
+// Pastille de sécurité (3 niveaux) réutilisée dans l'analyse d'ingrédients.
+const SAFETY_DOT = { green: 'bg-emerald-500', caution: 'bg-amber-500', red: 'bg-red-500' }
+const SafetyDot = ({ safety }) => (
+  <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${SAFETY_DOT[safety] || 'bg-dz-text-4'}`} />
+)
+
+// Combobox produit avec recherche : image + marque + prix.
+const ProductPicker = ({ products, value, onChange, placeholder, searchPlaceholder, emptyText, disabled, disabledHint, testId }) => {
+  const [open, setOpen] = useState(false)
+  const selected = products.find((p) => p.slug === value)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button" data-testid={testId} disabled={disabled}
+          className="flex w-full items-center gap-3 rounded-2xl border border-dz-rule bg-white px-3 py-2.5 text-left transition-colors hover:border-dz-accent disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {selected ? (
+            <>
+              <img src={selected.image} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[11px] uppercase tracking-wider text-dz-text-4">{selected.brand_name}</span>
+                <span className="block truncate text-sm font-semibold text-dz-ink">{selected.name}</span>
+              </span>
+              <span className="shrink-0 font-mono text-sm text-dz-accent">{selected.price_eur?.toFixed(2)} €</span>
+            </>
+          ) : (
+            <span className="flex-1 truncate text-sm text-dz-text-4">{disabled && disabledHint ? disabledHint : placeholder}</span>
+          )}
+          <ChevronDown className="h-4 w-4 shrink-0 text-dz-text-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(92vw,440px)] p-0">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandGroup>
+              {products.map((p) => (
+                <CommandItem key={p.slug} value={`${p.brand_name} ${p.name} ${p.slug}`} onSelect={() => { onChange(p.slug); setOpen(false) }} className="gap-3">
+                  <img src={p.image} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[10.5px] uppercase tracking-wider text-dz-text-4">{p.brand_name}</span>
+                    <span className="block truncate text-sm text-dz-ink">{p.name}</span>
+                  </span>
+                  <span className="shrink-0 font-mono text-xs text-dz-text-2">{p.price_eur?.toFixed(2)} €</span>
+                  {value === p.slug && <Check className="h-4 w-4 shrink-0 text-dz-accent" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// En-tête produit (colonne) — collant en haut du tableau.
+const CompareProductHeader = ({ p, nav }) => (
+  <div className="text-center">
+    {p?.image && <img src={p.image} alt={p.name} className="mx-auto h-16 w-16 rounded-xl object-cover md:h-24 md:w-24" />}
+    <p className="mt-2 truncate text-[10.5px] uppercase tracking-wider text-dz-text-4">{p?.brand_name}</p>
+    <button onClick={() => nav('product', p.slug)} className="line-clamp-2 block w-full text-sm font-semibold leading-snug text-dz-ink hover:underline">{p?.name}</button>
+  </div>
+)
+
+// Ligne comparative avec surlignage du gagnant (trophée + fond accent).
+const CMP_GRID = 'grid grid-cols-[92px_1fr_1fr] gap-2 md:grid-cols-[150px_1fr_1fr]'
+const CompareRow = ({ rowLabel, a, b, winner, testId }) => {
+  const cell = (content, side) => (
+    <div data-testid={testId ? `${testId}-${side}` : undefined}
+      className={`flex items-center justify-center gap-1.5 border-t border-dz-rule-card px-1 py-3 text-center text-sm font-semibold text-dz-ink ${winner === side ? 'rounded-lg bg-dz-accent-bg/70' : ''}`}>
+      {winner === side && <Trophy className="h-3.5 w-3.5 shrink-0 text-dz-accent" />}
+      <span>{content}</span>
+    </div>
+  )
+  return (
+    <>
+      <div className="flex items-center border-t border-dz-rule-card py-3 pr-2 text-[11px] font-semibold uppercase tracking-wider text-dz-text-4">{rowLabel}</div>
+      {cell(a, 'a')}
+      {cell(b, 'b')}
+    </>
+  )
+}
+
+// Tuile "verdict" synthétique.
+const VerdictTile = ({ icon, label: tileLabel, value, sub }) => (
+  <div className="rounded-2xl border border-dz-rule bg-white p-4">
+    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-dz-text-4">{icon}{tileLabel}</div>
+    <p className="mt-1.5 text-sm font-semibold leading-snug text-dz-ink">{value}</p>
+    {sub && <p className="mt-0.5 text-[11px] text-dz-text-2">{sub}</p>}
+  </div>
+)
+
+// Badge d'ingrédient cliquable dans l'analyse comparative.
+const CompareIngBadge = ({ slug, name, safety, accent, onOpen }) => (
+  <button onClick={() => onOpen(slug)}
+    className={`inline-flex items-center gap-1.5 rounded-dz-pill px-2.5 py-1 text-[11px] transition-colors ${accent ? 'bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg/70' : 'bg-dz-surface-2 text-dz-text hover:text-dz-accent'}`}>
+    <SafetyDot safety={safety} /> {name}
+  </button>
+)
+
+const CompareView = ({ lang, nav, products, compareA, setCompareA, pair }) => {
+  const [a, setA] = useState('')
   const [b, setB] = useState('')
   const [result, setResult] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  // Initialisation : lien partagé (#/compare/slugA__slugB) ou pré-sélection compareA.
+  useEffect(() => {
+    if (pair && pair.includes('__')) {
+      const [pa, pb] = pair.split('__')
+      setA(pa || ''); setB(pb || '')
+    } else if (compareA) {
+      setA(compareA)
+    }
+  }, [pair]) // init depuis lien partagé / compareA
+
+  // Récupération de la comparaison + URL partageable.
   useEffect(() => {
     if (a && b && a !== b) {
-      fetch(`/api/compare?a=${a}&b=${b}`).then((r) => r.json()).then(setResult)
+      fetch(`/api/compare?a=${a}&b=${b}`).then((r) => r.json()).then(setResult).catch(() => setResult(null))
+      const hash = `#/compare/${a}__${b}`
+      if (typeof window !== 'undefined' && window.location.hash !== hash) window.history.replaceState(null, '', hash)
     } else setResult(null)
   }, [a, b])
 
-  const rowLabel = 'text-xs uppercase tracking-wider text-dz-text-4 font-semibold py-3 pr-4'
-  const ingName = (slug) => result?.ingredient_details?.find((i) => i.slug === slug)?.name || slug
+  const productA = products.find((p) => p.slug === a)
+  // Produit B restreint à la même catégorie que A (comparaison pertinente).
+  const optionsB = productA ? products.filter((p) => p.slug !== a && p.category === productA.category) : []
 
-  const ProductCol = ({ p }) => (
-    <div className="text-center">
-      <img src={p.image} alt={p.name} className="h-24 w-24 md:h-36 md:w-36 object-cover rounded-xl mx-auto" />
-      <p className="text-[11px] uppercase tracking-wider text-dz-text-4 mt-2">{p.brand_name}</p>
-      <button onClick={() => nav('product', p.slug)} className="font-semibold text-dz-ink text-sm hover:underline leading-snug">{p.name}</button>
-    </div>
-  )
+  // Si B devient incompatible après un changement de A, on le réinitialise.
+  useEffect(() => {
+    if (productA && b) {
+      const stillValid = products.some((p) => p.slug === b && p.category === productA.category && p.slug !== a)
+      if (!stillValid) setB('')
+    }
+  }, [a]) // réinitialise B si incompatible après changement de A
+
+  const handleA = (slug) => { setA(slug); setCompareA?.(slug) }
+  const swap = () => { const na = b, nb = a; setA(na); setB(nb); setCompareA?.(na) }
+  const reset = () => { setA(''); setB(''); setResult(null); if (typeof window !== 'undefined') window.history.replaceState(null, '', '#/compare') }
+
+  const shareUrl = a && b && typeof window !== 'undefined' ? `${window.location.origin}/#/compare/${a}__${b}` : ''
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard unavailable */ }
+  }
+
+  const pa = result && !result.error ? result.a : null
+  const pb = result && !result.error ? result.b : null
+  const detail = (slug) => result?.ingredient_details?.find((i) => i.slug === slug)
+  const ingName = (slug) => detail(slug)?.name || slug
+  const avgComedo = (p) => {
+    const list = (p?.ingredients || []).map((s) => detail(s)?.comedogenic).filter((n) => typeof n === 'number')
+    if (!list.length) return null
+    return list.reduce((x, y) => x + y, 0) / list.length
+  }
+
+  // Gagnants par critère.
+  const pick = (av, bv, higher = true) => (av === bv ? null : (higher ? (av > bv ? 'a' : 'b') : (av < bv ? 'a' : 'b')))
+  const priceWinner = pa && pb ? pick(pa.price_eur, pb.price_eur, false) : null
+  const ratingWinner = pa && pb ? pick(pa.rating, pb.rating, true) : null
+  const comedoA = avgComedo(pa), comedoB = avgComedo(pb)
+  const gentleWinner = (comedoA != null && comedoB != null) ? pick(comedoA, comedoB, false) : null
+  const valueWinner = pa && pb ? pick(pa.rating / pa.price_eur, pb.rating / pb.price_eur, true) : null
+  const winnerName = (side) => side === 'a' ? pa?.name : side === 'b' ? pb?.name : (lang === 'fr' ? 'Égalité' : 'Tie')
+
+  const common = result?.common_ingredients || []
+  const uniqueA = (pa?.ingredients || []).filter((i) => !common.includes(i))
+  const uniqueB = (pb?.ingredients || []).filter((i) => !common.includes(i))
+
+  const openIng = (slug) => nav('ingredient', slug)
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <SectionTitle sub={lang === 'fr' ? 'Comparez deux produits côte à côte' : 'Compare two products side by side'}>
+    <div className="container mx-auto max-w-5xl px-4 py-8">
+      <SectionTitle sub={lang === 'fr' ? 'Comparez deux produits côte à côte, ingrédient par ingrédient' : 'Compare two products side by side, ingredient by ingredient'}>
         {lang === 'fr' ? 'Comparateur' : 'Compare'}
       </SectionTitle>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-        <Select value={a} onValueChange={(v) => { setA(v); setCompareA(v) }}>
-          <SelectTrigger data-testid="compare-select-a"><SelectValue placeholder={lang === 'fr' ? 'Produit A' : 'Product A'} /></SelectTrigger>
-          <SelectContent>{products.map((p) => <SelectItem key={p.slug} value={p.slug}>{p.brand_name} — {p.name}</SelectItem>)}</SelectContent>
-        </Select>
-        <Select value={b} onValueChange={setB}>
-          <SelectTrigger data-testid="compare-select-b"><SelectValue placeholder={lang === 'fr' ? 'Produit B' : 'Product B'} /></SelectTrigger>
-          <SelectContent>{products.map((p) => <SelectItem key={p.slug} value={p.slug}>{p.brand_name} — {p.name}</SelectItem>)}</SelectContent>
-        </Select>
+
+      {/* Sélecteurs + échanger */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
+        <ProductPicker
+          products={products} value={a} onChange={handleA}
+          placeholder={lang === 'fr' ? 'Choisir le produit A' : 'Choose product A'}
+          searchPlaceholder={lang === 'fr' ? 'Rechercher un produit…' : 'Search a product…'}
+          emptyText={lang === 'fr' ? 'Aucun produit' : 'No product'}
+          testId="compare-select-a"
+        />
+        <button onClick={swap} disabled={!a || !b} data-testid="compare-swap"
+          aria-label={lang === 'fr' ? 'Échanger' : 'Swap'}
+          className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-dz-surface shadow-dz-card transition-colors hover:text-dz-accent disabled:opacity-40">
+          <ArrowLeftRight className="h-4 w-4" />
+        </button>
+        <ProductPicker
+          products={optionsB} value={b} onChange={setB} disabled={!a}
+          disabledHint={lang === 'fr' ? "Choisissez d'abord le produit A" : 'Pick product A first'}
+          placeholder={lang === 'fr' ? 'Choisir le produit B' : 'Choose product B'}
+          searchPlaceholder={lang === 'fr' ? 'Rechercher un produit…' : 'Search a product…'}
+          emptyText={lang === 'fr' ? 'Aucun produit de même catégorie' : 'No product in the same category'}
+          testId="compare-select-b"
+        />
       </div>
-      {!result && <p className="text-center text-dz-text-4 py-10">{lang === 'fr' ? 'Sélectionnez deux produits pour lancer la comparaison.' : 'Select two products to start comparing.'}</p>}
-      {result && !result.error && (
-        <Card className="border-dz-rule overflow-hidden" data-testid="compare-result">
-          <CardContent className="p-4 md:p-6">
-            <div className="grid grid-cols-[80px_1fr_1fr] md:grid-cols-[140px_1fr_1fr] gap-2 items-start">
-              <div></div>
-              <ProductCol p={result.a} />
-              <ProductCol p={result.b} />
-              {[
-                { l: lang === 'fr' ? 'Prix' : 'Price', va: `${result.a.price_eur?.toFixed(2)} €`, vb: `${result.b.price_eur?.toFixed(2)} €` },
-                { l: lang === 'fr' ? 'Note' : 'Rating', va: `★ ${result.a.rating}`, vb: `★ ${result.b.rating}` },
-                { l: lang === 'fr' ? 'Catégorie' : 'Category', va: label(CATEGORIES, result.a.category, lang), vb: label(CATEGORIES, result.b.category, lang) },
-                { l: lang === 'fr' ? 'Origine' : 'Origin', va: result.a.german_made ? '🇩🇪 Allemagne' : '—', vb: result.b.german_made ? '🇩🇪 Allemagne' : '—' },
-              ].map((row, idx) => (
-                <>
-                  <div key={`l${idx}`} className={rowLabel}>{row.l}</div>
-                  <div key={`a${idx}`} className="py-3 text-center text-sm font-semibold text-dz-ink border-t border-dz-rule-card">{row.va}</div>
-                  <div key={`b${idx}`} className="py-3 text-center text-sm font-semibold text-dz-ink border-t border-dz-rule-card">{row.vb}</div>
-                </>
-              ))}
-              <div className={rowLabel}>{lang === 'fr' ? 'Préoccupations' : 'Concerns'}</div>
-              {[result.a, result.b].map((p, idx) => (
-                <div key={idx} className="py-3 flex flex-wrap gap-1 justify-center border-t border-dz-rule-card">
-                  {(p.concerns || []).map((c) => <Badge key={c} variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
+
+      {/* Note catégorie */}
+      {productA && (
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-dz-text-2">
+          <Tag className="h-3.5 w-3.5 text-dz-accent" />
+          {lang === 'fr'
+            ? <>Comparaison limitée à la catégorie <b className="text-dz-ink">{label(CATEGORIES, productA.category, lang)}</b> pour rester pertinente.</>
+            : <>Comparison limited to the <b className="text-dz-ink">{label(CATEGORIES, productA.category, lang)}</b> category to stay relevant.</>}
+        </p>
+      )}
+
+      {(!a || !b) && (
+        <div className="py-16 text-center text-dz-text-4" data-testid="compare-empty">
+          <GitCompare className="mx-auto mb-3 h-8 w-8 opacity-40" />
+          {lang === 'fr' ? 'Sélectionnez deux produits pour lancer la comparaison.' : 'Select two products to start comparing.'}
+        </div>
+      )}
+
+      {result?.error && (
+        <p className="py-10 text-center text-dz-text-4">{lang === 'fr' ? 'Produit introuvable.' : 'Product not found.'}</p>
+      )}
+
+      {pa && pb && (
+        <div className="mt-8 space-y-6" data-testid="compare-result">
+          {/* Verdict */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <VerdictTile icon={<Tag className="h-3.5 w-3.5" />} label={lang === 'fr' ? 'Le moins cher' : 'Cheapest'}
+              value={winnerName(priceWinner)} sub={priceWinner ? `${(priceWinner === 'a' ? pa : pb).price_eur?.toFixed(2)} €` : null} />
+            <VerdictTile icon={<Star className="h-3.5 w-3.5" />} label={lang === 'fr' ? 'Le mieux noté' : 'Top rated'}
+              value={winnerName(ratingWinner)} sub={ratingWinner ? `${toScore((ratingWinner === 'a' ? pa : pb).rating)}/10` : null} />
+            <VerdictTile icon={<Droplets className="h-3.5 w-3.5" />} label={lang === 'fr' ? 'Le plus doux' : 'Gentlest'}
+              value={winnerName(gentleWinner)} sub={lang === 'fr' ? 'comédogénicité la plus basse' : 'lowest comedogenicity'} />
+            <VerdictTile icon={<Scale className="h-3.5 w-3.5" />} label={lang === 'fr' ? 'Meilleur rapport Q/P' : 'Best value'}
+              value={winnerName(valueWinner)} sub={lang === 'fr' ? 'note / prix' : 'rating / price'} />
+          </div>
+
+          {/* Tableau comparatif */}
+          <Card className="border-dz-rule overflow-hidden">
+            <CardContent className="p-0">
+              <div className={`sticky top-[64px] z-10 border-b border-dz-rule bg-white/95 px-4 pb-3 pt-4 backdrop-blur md:top-[72px] ${CMP_GRID}`}>
+                <div className="flex items-end">
+                  <button onClick={reset} data-testid="compare-reset"
+                    className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-dz-text-4 hover:text-dz-accent">
+                    <RefreshCw className="h-3 w-3" />{lang === 'fr' ? 'Reset' : 'Reset'}
+                  </button>
                 </div>
-              ))}
-              <div className={rowLabel}>{lang === 'fr' ? 'Actifs' : 'Actives'}</div>
-              {[result.a, result.b].map((p, idx) => (
-                <div key={idx} className="py-3 flex flex-wrap gap-1 justify-center border-t border-dz-rule-card">
-                  {(p.ingredients || []).map((ing) => (
-                    <Badge key={ing} className={result.common_ingredients.includes(ing)
-                      ? 'bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg text-[10px]'
-                      : 'bg-dz-surface-2 text-dz-text hover:bg-dz-surface-2 text-[10px]'}>
-                      {ingName(ing)}
-                    </Badge>
-                  ))}
+                <CompareProductHeader p={pa} nav={nav} />
+                <CompareProductHeader p={pb} nav={nav} />
+              </div>
+
+              <div className={`px-4 pb-4 ${CMP_GRID}`}>
+                <CompareRow testId="compare-row-price" rowLabel={lang === 'fr' ? 'Prix' : 'Price'}
+                  a={`${pa.price_eur?.toFixed(2)} €`} b={`${pb.price_eur?.toFixed(2)} €`} winner={priceWinner} />
+                <CompareRow testId="compare-row-rating" rowLabel={lang === 'fr' ? 'Note' : 'Rating'}
+                  a={`${toScore(pa.rating)}/10`} b={`${toScore(pb.rating)}/10`} winner={ratingWinner} />
+                <CompareRow rowLabel={lang === 'fr' ? 'Catégorie' : 'Category'}
+                  a={label(CATEGORIES, pa.category, lang)} b={label(CATEGORIES, pb.category, lang)} winner={null} />
+                <CompareRow rowLabel={lang === 'fr' ? 'Comédogénicité' : 'Comedogenicity'}
+                  a={comedoA != null ? `${comedoA.toFixed(1)}/5` : '—'} b={comedoB != null ? `${comedoB.toFixed(1)}/5` : '—'} winner={gentleWinner} />
+                <CompareRow rowLabel={lang === 'fr' ? "Nb d'actifs" : 'Actives'}
+                  a={(pa.ingredients || []).length} b={(pb.ingredients || []).length} winner={null} />
+                <CompareRow rowLabel={lang === 'fr' ? 'Origine' : 'Origin'}
+                  a={pa.german_made ? '🇩🇪' : '—'} b={pb.german_made ? '🇩🇪' : '—'} winner={null} />
+
+                <div className="flex items-center border-t border-dz-rule-card py-3 pr-2 text-[11px] font-semibold uppercase tracking-wider text-dz-text-4">{lang === 'fr' ? 'Préoccupations' : 'Concerns'}</div>
+                {[pa, pb].map((p, idx) => (
+                  <div key={idx} className="flex flex-wrap justify-center gap-1 border-t border-dz-rule-card py-3">
+                    {(p.concerns || []).map((c) => <Badge key={c} variant="secondary" className="bg-dz-surface-2 text-[10px] text-dz-text">{label(CONCERNS, c, lang)}</Badge>)}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Analyse des ingrédients */}
+          <Card className="border-dz-rule">
+            <CardContent className="p-4 md:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-display text-xl tracking-[-0.01em] text-dz-ink">{lang === 'fr' ? 'Analyse des ingrédients' : 'Ingredient analysis'}</h3>
+                <div className="flex items-center gap-3 text-[11px] text-dz-text-2">
+                  <span className="flex items-center gap-1"><SafetyDot safety="green" />{lang === 'fr' ? 'Sûr' : 'Safe'}</span>
+                  <span className="flex items-center gap-1"><SafetyDot safety="caution" />{lang === 'fr' ? 'Prudence' : 'Caution'}</span>
                 </div>
-              ))}
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl bg-dz-accent-bg/40 p-4">
+                  <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-dz-accent">
+                    <Check className="h-3.5 w-3.5" />{lang === 'fr' ? 'Communs' : 'Shared'} ({common.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5" data-testid="compare-common">
+                    {common.length ? common.map((s) => <CompareIngBadge key={s} slug={s} name={ingName(s)} safety={detail(s)?.safety} accent onOpen={openIng} />) : <span className="text-[11px] text-dz-text-4">—</span>}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-dz-surface-2/60 p-4">
+                  <p className="mb-2 truncate text-[11px] font-semibold uppercase tracking-wider text-dz-text-4">{lang === 'fr' ? 'Propres à' : 'Only in'} {pa.name}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {uniqueA.length ? uniqueA.map((s) => <CompareIngBadge key={s} slug={s} name={ingName(s)} safety={detail(s)?.safety} onOpen={openIng} />) : <span className="text-[11px] text-dz-text-4">—</span>}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-dz-surface-2/60 p-4">
+                  <p className="mb-2 truncate text-[11px] font-semibold uppercase tracking-wider text-dz-text-4">{lang === 'fr' ? 'Propres à' : 'Only in'} {pb.name}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {uniqueB.length ? uniqueB.map((s) => <CompareIngBadge key={s} slug={s} name={ingName(s)} safety={detail(s)?.safety} onOpen={openIng} />) : <span className="text-[11px] text-dz-text-4">—</span>}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Partage */}
+          <div className="rounded-2xl border border-dz-accent-bg bg-dz-accent-bg p-4 md:p-5">
+            <p className="flex items-center gap-2 font-semibold text-dz-ink">
+              <Share2 className="h-4 w-4 text-dz-accent" /> {lang === 'fr' ? 'Partager cette comparaison' : 'Share this comparison'}
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Input data-testid="compare-share-url" readOnly value={shareUrl} onFocus={(e) => e.target.select()} className="bg-white text-sm" />
+              <Button data-testid="compare-share-copy" variant="outline" className="shrink-0 border-dz-accent text-dz-accent" onClick={copyLink}>
+                {copied ? <><Check className="mr-2 h-4 w-4" />{lang === 'fr' ? 'Copié !' : 'Copied!'}</> : <><Copy className="mr-2 h-4 w-4" />{lang === 'fr' ? 'Copier le lien' : 'Copy link'}</>}
+              </Button>
             </div>
-            {result.common_ingredients.length > 0 && (
-              <p className="text-xs text-dz-text-2 mt-4 text-center">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-dz-accent-bg mr-1.5"></span>
-                {lang === 'fr' ? 'Actifs communs aux deux produits' : 'Actives shared by both products'}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -2864,7 +3107,7 @@ function App() {
         {v === 'brands' && <BrandsView lang={lang} nav={nav} germanOnly={false} />}
         {v === 'german-brands' && <BrandsView lang={lang} nav={nav} germanOnly={true} />}
         {v === 'brand' && <BrandDetailView slug={route.param} lang={lang} nav={nav} />}
-        {v === 'compare' && <CompareView lang={lang} nav={nav} products={products} compareA={compareA} setCompareA={setCompareA} />}
+        {v === 'compare' && <CompareView lang={lang} nav={nav} products={products} compareA={compareA} setCompareA={setCompareA} pair={route.param} />}
         {v === 'finder' && <FinderView lang={lang} nav={nav} />}
         {v === 'routine' && <SharedRoutineView id={route.param} lang={lang} nav={nav} />}
         {v === 'reels' && <ReelsView lang={lang} nav={nav} slug={route.param} />}

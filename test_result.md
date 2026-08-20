@@ -427,6 +427,17 @@ backend:
         comment: "Verified via curl: GET /api/reels returns total:4 with the 4 distinct shorts URLs. All 4 videos confirmed public via YouTube oEmbed. Frontend /#/reels feed renders 4 reels with thumbnails + editorial panel (screenshot confirmed)."
 
 frontend:
+  - task: "Comparateur v2 (UI/UX + fonctionnalités): remplacement des Select bruts par ProductPicker (Popover+Command searchable, image+marque+prix); bouton Échanger + Reset; restriction du produit B à la MÊME catégorie que A (avec note explicative); surlignage du gagnant par ligne (Prix, Note, Comédogénicité, rapport Q/P) avec trophée; en-tête produit collant; 4 tuiles Verdict (moins cher, mieux noté, plus doux, meilleur rapport Q/P); analyse d'ingrédients en 3 colonnes (communs/uniques A/uniques B) avec pastilles de sécurité (vert=sûr, ambre=prudence) et comédogénicité moyenne; lien partageable #/compare/slugA__slugB (auto-chargement + copie). Aucun changement backend (utilise /api/compare existant)."
+    implemented: true
+    working: "NA"
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Vérifié visuellement (screenshots + bounding_box Playwright): sélection A/B via combobox recherche OK, B limité aux 5 produits même catégorie (Sérum), tuiles verdict correctes, surlignage gagnant (Note 9.2/10 trophée), analyse ingrédients (Communs: Acide Hyaluronique+Glycérine; unique B: Niacinamide) avec pastilles vertes, lien partageable généré + auto-chargement du lien direct OK. En attente d'accord utilisateur pour test frontend automatisé."
   - task: "Reels thumbnail quality: parseVideoUrl now uses YouTube Shorts vertical thumbnail (oardefault.jpg) with onError fallback to hqdefault.jpg in both ReelCard (home rail) and ReelsView (feed)."
     implemented: true
     working: "NA"
