@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -72,109 +73,191 @@ const label = (list, id, lang) => {
 }
 
 // ---------- small ui helpers ----------
+
+// Conteneur du handoff : max-width 1320px, gouttière 44px (20px en mobile).
+const Container = ({ children, className = '' }) => (
+  <div className={`mx-auto w-full max-w-dz px-5 md:px-11 ${className}`}>{children}</div>
+)
+
+// Meta / données en IBM Plex Mono, uppercase, letter-spacing large.
+const Mono = ({ children, className = '', as: Tag = 'span', ...rest }) => (
+  <Tag className={`font-mono uppercase ${className}`} {...rest}>{children}</Tag>
+)
+
+// Score sur 10 (les notes de l'API sont sur 5).
+const toScore = (rating) => ((rating || 0) * 2).toFixed(1)
+
+// Placeholder rayé du prototype : sert de fond aux visuels le temps de leur
+// chargement, et de repli quand aucune image n'est fournie.
+const Placeholder = ({ label, className = '' }) => (
+  <div className={`dz-placeholder flex items-end p-4 ${className}`}>
+    {label && <Mono className="text-[9.5px] tracking-[0.1em] text-[#93908A]">{label}</Mono>}
+  </div>
+)
+
+// En-tête de section : titre display + sous-titre + lien « Tout voir → ».
+const SectionHead = ({ title, sub, action, onAction, testId }) => (
+  <div className="mb-8 flex flex-col gap-3 md:mb-[38px] md:flex-row md:items-end md:justify-between">
+    <h2 className="m-0 font-display text-[32px] leading-none tracking-[-0.02em] md:text-[40px] xl:text-[48px]">{title}</h2>
+    <div className="flex items-center gap-6 md:pb-1.5">
+      {sub && <span className="text-[14.5px] text-dz-text-2">{sub}</span>}
+      {action && (
+        <button data-testid={testId} onClick={onAction}
+          className="whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.14em] text-dz-accent transition-colors duration-200 hover:text-dz-accent-hover">
+          {action} →
+        </button>
+      )}
+    </div>
+  </div>
+)
+
+// Bouton plein noir (Product Finder, Découvrir) — hover accent + translateY(-1px).
+const InkButton = ({ children, className = '', ...rest }) => (
+  <button
+    className={`inline-block whitespace-nowrap rounded-dz-pill bg-dz-ink px-5 py-[11px] text-[13.5px] font-medium text-dz-on-dark transition-[background-color,transform] duration-250 hover:-translate-y-px hover:bg-dz-accent ${className}`}
+    {...rest}
+  >
+    {children}
+  </button>
+)
+
+// Note produit : score /10 en mono accent, comme dans le pied des cartes.
 const Stars = ({ rating }) => (
-  <span className="flex items-center gap-1 text-amber-500">
-    <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-    <span className="text-xs font-semibold text-stone-700">{rating?.toFixed(1)}</span>
+  <span className="flex items-baseline gap-[5px]">
+    <span className="font-mono text-[15px] text-dz-accent">{toScore(rating)}</span>
+    <span className="font-mono text-[10px] text-dz-text-4">/10</span>
   </span>
 )
 
+// Badge pill mono — accent pour « sûr », sable pour « prudence ».
 const SafetyBadge = ({ safety, lang }) => (
-  <Badge className={safety === 'green' ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100' : 'bg-amber-100 text-amber-800 hover:bg-amber-100'}>
+  <Mono className={`rounded-dz-pill px-[13px] py-[7px] text-[10.5px] tracking-[0.06em] ${
+    safety === 'green' ? 'bg-dz-accent-bg text-dz-accent' : 'bg-dz-sand text-dz-sand-eyebrow'
+  }`}>
     {safety === 'green' ? (lang === 'fr' ? 'Sûr' : 'Safe') : (lang === 'fr' ? 'Prudence' : 'Caution')}
-  </Badge>
+  </Mono>
 )
 
+// Niveau de preuve : badge mono accent sur #EFF3F5 (handoff §6).
 const EvidenceBadge = ({ evidence, lang }) => (
-  <Badge variant="outline" className="border-stone-300 text-stone-600">
+  <Mono className="whitespace-nowrap rounded-dz-pill bg-dz-accent-bg px-[13px] py-[7px] text-[10.5px] tracking-[0.06em] text-dz-accent">
     {lang === 'fr'
       ? evidence === 'strong' ? 'Preuves solides' : evidence === 'moderate' ? 'Preuves modérées' : 'Preuves limitées'
       : evidence === 'strong' ? 'Strong evidence' : evidence === 'moderate' ? 'Moderate evidence' : 'Limited evidence'}
-  </Badge>
+  </Mono>
 )
 
 const SectionTitle = ({ children, sub }) => (
-  <div className="mb-6">
-    <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>{children}</h2>
-    {sub && <p className="text-stone-500 mt-1 text-sm md:text-base">{sub}</p>}
+  <div className="mb-8">
+    <h2 className="m-0 font-display text-[32px] leading-none tracking-[-0.02em] md:text-[40px] xl:text-[48px]">{children}</h2>
+    {sub && <p className="mt-3 text-[14.5px] text-dz-text-2">{sub}</p>}
   </div>
 )
 
 // ---------- Product Card ----------
+// Handoff §5 : image 210px + badge pays, marque en mono, nom en Instrument
+// Serif 23px, claim, pied séparé par un filet avec le score /10 et le prix.
 const ProductCard = ({ p, lang, onOpen }) => (
-  <Card data-testid={`product-card-${p.slug}`} onClick={() => onOpen(p.slug)} className="group cursor-pointer overflow-hidden border-stone-200 hover:shadow-lg transition-all duration-300 bg-white">
-    <div className="relative aspect-square overflow-hidden bg-stone-100">
-      <img src={p.image} alt={p.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
+  <button
+    data-testid={`product-card-${p.slug}`}
+    onClick={() => onOpen(p.slug)}
+    className="group flex flex-col overflow-hidden rounded-dz-card bg-dz-surface text-left shadow-dz-card transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-dz-card-hover"
+  >
+    <div className="dz-placeholder relative h-[210px] overflow-hidden">
+      <img src={p.image} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
       {p.german_made && (
-        <Badge className="absolute top-2 left-2 bg-stone-900/85 text-white hover:bg-stone-900/85 text-[10px]">🇩🇪 Made in Germany</Badge>
+        <Mono className="absolute right-4 top-4 rounded-dz-pill bg-white/90 px-[9px] py-[5px] text-[9.5px] tracking-[0.1em] text-dz-ink">DE</Mono>
       )}
     </div>
-    <CardContent className="p-3 md:p-4">
-      <p className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">{p.brand_name}</p>
-      <h3 className="text-sm md:text-base font-semibold text-stone-900 leading-snug line-clamp-2 mt-0.5">{p.name}</h3>
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-sm font-bold text-stone-900">{p.price_eur?.toFixed(2)} €</span>
-        <Stars rating={p.rating} />
-      </div>
-      <div className="flex flex-wrap gap-1 mt-2">
-        {(p.concerns || []).slice(0, 2).map((c) => (
-          <Badge key={c} variant="secondary" className="text-[10px] bg-stone-100 text-stone-600 hover:bg-stone-100">{label(CONCERNS, c, lang)}</Badge>
-        ))}
-      </div>
-    </CardContent>
-  </Card>
+    <div className="flex flex-1 flex-col gap-2.5 p-[22px]">
+      <Mono className="text-[10.5px] tracking-[0.14em] text-dz-text-3">{p.brand_name}</Mono>
+      <span className="font-display text-[23px] leading-[1.15] tracking-[-0.015em] text-pretty">{p.name}</span>
+      <span className="line-clamp-2 text-[13.5px] font-light leading-[1.55] text-dz-text-2">{p.description?.[lang]}</span>
+      <span className="mt-auto flex items-center justify-between pt-[18px] shadow-dz-rule-t-card">
+        <span className="flex items-baseline gap-[5px] pt-3.5">
+          <span className="font-mono text-[19px] text-dz-accent">{toScore(p.rating)}</span>
+          <span className="font-mono text-[11px] text-dz-text-4">/10</span>
+        </span>
+        <span className="pt-3.5 text-[12px] text-dz-text-4">{p.price_eur?.toFixed(2)} €</span>
+      </span>
+    </div>
+  </button>
 )
 
 // ---------- Header ----------
+// Handoff §1 : sticky 72px, fond translucide + backdrop-blur(18px) saturate(1.4),
+// filet bas en box-shadow. Nav principale à gauche, groupe utilitaire à droite.
 const Header = ({ lang, setLang, nav, route }) => {
   const [open, setOpen] = useState(false)
-  const items = [
+
+  const mainItems = [
     { v: 'products', fr: 'Produits', en: 'Products' },
     { v: 'hubs', fr: 'Conseils', en: 'Advice' },
     { v: 'ingredients', fr: 'Ingrédients', en: 'Ingredients' },
     { v: 'brands', fr: 'Marques', en: 'Brands' },
-    { v: 'german-brands', fr: 'Marques allemandes', en: 'German Brands' },
+    { v: 'german-brands', fr: 'Marques allemandes', en: 'German Brands', accent: true },
     { v: 'compare', fr: 'Comparer', en: 'Compare' },
-    { v: 'finder', fr: 'Product Finder', en: 'Product Finder' },
+  ]
+  const utilityItems = [
     { v: 'learn', fr: 'Guides', en: 'Guides' },
     { v: 'for-brands', fr: 'Pour les marques', en: 'For Brands' },
   ]
+  const allItems = [...mainItems, ...utilityItems, { v: 'finder', fr: 'Product Finder', en: 'Product Finder' }]
+
   const go = (v) => { nav(v); setOpen(false) }
+
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-stone-200">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-14 md:h-16">
-          <button data-testid="logo-btn" onClick={() => go('home')} className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-emerald-800 flex items-center justify-center">
-              <Droplets className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-lg font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>Dermalyze</span>
+    <header className="sticky top-0 z-30 bg-[rgba(246,245,242,0.82)] shadow-dz-header backdrop-blur-[18px] backdrop-saturate-[1.4]">
+      <div className="mx-auto flex h-[72px] max-w-dz items-center gap-11 px-5 md:px-11">
+        <button data-testid="logo-btn" onClick={() => go('home')} className="flex shrink-0 items-baseline gap-[9px] text-dz-ink">
+          <span className="font-display text-[26px] leading-none tracking-[-0.01em]">Dermalyze</span>
+          <Mono className="text-[9.5px] tracking-[0.16em] text-dz-text-3">Science</Mono>
+        </button>
+
+        <nav className="hidden items-center gap-7 whitespace-nowrap text-[14px] xl:flex">
+          {mainItems.map((it) => (
+            <button key={it.v} data-testid={`nav-${it.v}`} onClick={() => go(it.v)}
+              className={`transition-colors duration-200 hover:text-dz-accent-hover ${
+                it.accent || route.view === it.v ? 'text-dz-accent' : 'text-dz-nav'
+              }`}>
+              {it[lang]}
+            </button>
+          ))}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-5 whitespace-nowrap">
+          {utilityItems.map((it) => (
+            <button key={it.v} data-testid={`nav-${it.v}`} onClick={() => go(it.v)}
+              className={`hidden text-[14px] transition-colors duration-200 hover:text-dz-accent-hover lg:block ${
+                route.view === it.v ? 'text-dz-accent' : 'text-dz-nav'
+              }`}>
+              {it[lang]}
+            </button>
+          ))}
+
+          <button data-testid="lang-toggle" onClick={() => setLang(lang === 'fr' ? 'en' : 'fr')}
+            aria-label={lang === 'fr' ? 'Passer en anglais' : 'Switch to French'}
+            className="px-0.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-dz-nav shadow-dz-lang transition-colors duration-200 hover:text-dz-accent">
+            {lang === 'fr' ? 'FR' : 'EN'}
           </button>
-          <nav className="hidden lg:flex items-center gap-1">
-            {items.map((it) => (
-              <button key={it.v} data-testid={`nav-${it.v}`} onClick={() => go(it.v)}
-                className={`px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors ${route.view === it.v ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-900'}`}>
-                {it[lang]}
-              </button>
-            ))}
-          </nav>
-          <div className="flex items-center gap-2">
-            <button data-testid="lang-toggle" onClick={() => setLang(lang === 'fr' ? 'en' : 'fr')}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-stone-200 text-xs font-semibold text-stone-700 hover:bg-stone-50">
-              <Globe className="h-3.5 w-3.5" /> {lang === 'fr' ? 'FR' : 'EN'}
-            </button>
-            <button data-testid="mobile-menu-btn" className="lg:hidden p-2" onClick={() => setOpen(!open)}>
-              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-          </div>
+
+          <InkButton data-testid="nav-finder" onClick={() => go('finder')} className="hidden sm:inline-block">
+            Product Finder
+          </InkButton>
+
+          <button data-testid="mobile-menu-btn" aria-label="Menu" aria-expanded={open}
+            className="p-2 text-dz-ink xl:hidden" onClick={() => setOpen(!open)}>
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </div>
+
       {open && (
-        <div className="lg:hidden border-t border-stone-200 bg-white">
-          <div className="container mx-auto px-4 py-3 flex flex-col gap-1">
-            {items.map((it) => (
+        <div className="bg-dz-bg shadow-dz-rule-t xl:hidden">
+          <div className="mx-auto flex max-w-dz flex-col px-5 py-3 md:px-11">
+            {allItems.map((it) => (
               <button key={it.v} data-testid={`mobile-nav-${it.v}`} onClick={() => go(it.v)}
-                className="text-left px-3 py-2.5 rounded-md text-sm font-medium text-stone-700 hover:bg-stone-50">
+                className="rounded-lg px-3 py-2.5 text-left text-[14px] text-dz-nav transition-colors duration-200 hover:bg-dz-surface-2 hover:text-dz-accent">
                 {it[lang]}
               </button>
             ))}
@@ -186,189 +269,432 @@ const Header = ({ lang, setLang, nav, route }) => {
 }
 
 // ---------- Home ----------
+
+// Familles d'ingrédients utilisées par les filtres du handoff §6.
+// Taxonomie de présentation : à terme elle doit venir de l'API (cf. handoff).
+const INGREDIENT_FAMILIES = {
+  niacinamide: { fr: 'Éclaircissant', en: 'Brightening' },
+  'vitamine-c': { fr: 'Éclaircissant', en: 'Brightening' },
+  retinol: { fr: 'Rétinoïde', en: 'Retinoid' },
+  'acide-salicylique': { fr: 'Acide', en: 'Acid' },
+  'zinc-pca': { fr: 'Acide', en: 'Acid' },
+  'acide-hyaluronique': { fr: 'Hydratant', en: 'Hydrating' },
+  panthenol: { fr: 'Hydratant', en: 'Hydrating' },
+  ceramides: { fr: 'Hydratant', en: 'Hydrating' },
+  squalane: { fr: 'Hydratant', en: 'Hydrating' },
+  'aloe-vera': { fr: 'Hydratant', en: 'Hydrating' },
+  glycerine: { fr: 'Hydratant', en: 'Hydrating' },
+  'coenzyme-q10': { fr: 'Antioxydant', en: 'Antioxidant' },
+}
+const INGREDIENT_FILTERS = [
+  { id: 'all', fr: 'Tous', en: 'All' },
+  { id: 'Éclaircissant', fr: 'Éclaircissant', en: 'Brightening' },
+  { id: 'Rétinoïde', fr: 'Rétinoïde', en: 'Retinoid' },
+  { id: 'Acide', fr: 'Acide', en: 'Acid' },
+  { id: 'Hydratant', fr: 'Hydratant', en: 'Hydrating' },
+]
+const familyOf = (slug, lang) => INGREDIENT_FAMILIES[slug]?.[lang] || (lang === 'fr' ? 'Actif' : 'Active')
+const familyIdOf = (slug) => INGREDIENT_FAMILIES[slug]?.fr || 'Actif'
+
+// Suggestions « Populaire » du handoff, pointant vers la liste filtrée
+// correspondante plutôt que vers une recherche en dur.
+const SUGGESTIONS = [
+  { fr: 'Rétinol', en: 'Retinol', go: (nav) => nav('ingredient', 'retinol') },
+  { fr: 'Peau sensible', en: 'Sensitive skin', go: (nav) => nav('hub', 'sensitive') },
+  { fr: 'Eucerin', en: 'Eucerin', go: (nav) => nav('brand', 'eucerin') },
+  { fr: 'Anti-taches', en: 'Dark spots', go: (nav) => nav('hub', 'pigmentation') },
+]
+
+// Animation de comptage : easeOutCubic sur 1500 ms, déclenchée à l'entrée dans
+// le viewport (IntersectionObserver) et court-circuitée si l'utilisateur a
+// demandé moins d'animations.
+const useCountUp = (duration = 1500) => {
+  const ref = useRef(null)
+  const [t, setT] = useState(0)
+
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    if (typeof window === 'undefined') return
+
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setT(1)
+      return
+    }
+
+    let raf
+    const run = () => {
+      const start = performance.now()
+      const tick = () => {
+        const p = Math.min(1, (performance.now() - start) / duration)
+        setT(1 - Math.pow(1 - p, 3))
+        if (p < 1) raf = requestAnimationFrame(tick)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+
+    if (typeof IntersectionObserver === 'undefined') { run(); return () => cancelAnimationFrame(raf) }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) { observer.disconnect(); run() }
+    }, { threshold: 0.35 })
+    observer.observe(node)
+
+    return () => { observer.disconnect(); cancelAnimationFrame(raf) }
+  }, [duration])
+
+  return [ref, t]
+}
+
+// Handoff §3 : trois colonnes séparées par des filets, nombre en Instrument
+// Serif 52px + libellé alignés sur la baseline.
+const StatsBand = ({ stats, lang }) => {
+  const [ref, t] = useCountUp()
+  const fmt = (v) => Math.round((v || 0) * t).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US')
+  return (
+    <div ref={ref} data-testid="home-stats" className="mt-14 grid grid-cols-1 shadow-dz-rule-t sm:grid-cols-3 md:mt-[72px]">
+      {stats.map((s, i) => (
+        <div key={s.key}
+          className={`flex items-baseline gap-4 pt-[30px] ${
+            i === 0 ? 'sm:pr-10' : i === 1 ? 'sm:px-10 sm:shadow-dz-rule-x' : 'sm:pl-10'
+          }`}>
+          <span className="font-display text-[52px] leading-none tracking-[-0.02em] tabular-nums">{fmt(s.value)}</span>
+          <span className="text-[13.5px] text-dz-text-2">{s.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
+
   const featured = [...products].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 4)
   const german = brands.filter((b) => b.german)
+  const loading = products.length === 0
+
+  const submitSearch = (e) => {
+    e.preventDefault()
+    nav('products', null, { search: query.trim() })
+  }
+
+  // Handoff §6 : filtre sur la famille de l'ingrédient, avec état vide.
+  const shownIngredients = ingredients
+    .filter((i) => filter === 'all' || familyIdOf(i.slug) === filter)
+    .slice(0, 6)
+
+  const lead = articles[0]
+  const secondary = articles.slice(1, 3)
+  // Meta éditoriale : catégorie + temps de lecture estimé sur le contenu réel.
+  const readTime = (a) => {
+    const words = (a?.content?.[lang] || a?.excerpt?.[lang] || '').split(/\s+/).filter(Boolean).length
+    return Math.max(1, Math.round(words / 200))
+  }
+  const articleMeta = (a) => `${a?.category || ''} · ${readTime(a)} min`
+
   return (
     <div>
-      {/* Hero */}
-      <section className="bg-gradient-to-b from-stone-100 to-white">
-        <div className="container mx-auto px-4 py-10 md:py-20 grid md:grid-cols-2 gap-8 items-center">
-          <div>
-            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-4">
-              {lang === 'fr' ? 'Skincare basé sur la science' : 'Science-based skincare'}
-            </Badge>
-            <h1 className="text-3xl md:text-5xl font-bold text-stone-900 leading-tight" style={{ fontFamily: 'var(--font-playfair), serif' }}>
-              {lang === 'fr' ? 'Comprenez enfin ce que vous mettez sur votre peau' : 'Finally understand what you put on your skin'}
-            </h1>
-            <p className="text-stone-600 mt-4 text-base md:text-lg max-w-lg">
-              {lang === 'fr'
-                ? 'Analysez les ingrédients, comparez les produits et trouvez la routine idéale — avec un focus unique sur les marques dermatologiques allemandes.'
-                : 'Analyze ingredients, compare products and find your ideal routine — with a unique focus on German dermatological brands.'}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 mt-6">
-              <Button data-testid="hero-finder-btn" size="lg" className="bg-emerald-800 hover:bg-emerald-900 text-white" onClick={() => nav('finder')}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                {lang === 'fr' ? 'Lancer le Product Finder' : 'Start the Product Finder'}
-              </Button>
-              <Button data-testid="hero-products-btn" size="lg" variant="outline" className="border-stone-300" onClick={() => nav('products')}>
-                {lang === 'fr' ? 'Explorer les produits' : 'Explore products'}
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-            <div className="flex gap-6 mt-8">
-              <div><p className="text-2xl font-bold text-stone-900">{products.length}</p><p className="text-xs text-stone-500">{lang === 'fr' ? 'Produits analysés' : 'Products analyzed'}</p></div>
-              <div><p className="text-2xl font-bold text-stone-900">{ingredients.length}</p><p className="text-xs text-stone-500">{lang === 'fr' ? 'Ingrédients décryptés' : 'Ingredients decoded'}</p></div>
-              <div><p className="text-2xl font-bold text-stone-900">{german.length}</p><p className="text-xs text-stone-500">{lang === 'fr' ? 'Marques allemandes' : 'German brands'}</p></div>
-            </div>
-          </div>
-          <div className="relative">
-            <img src={HERO_IMG} alt="skincare" className="rounded-2xl shadow-xl w-full object-cover aspect-[4/3]" />
-          </div>
-        </div>
-      </section>
+      {/* ---------- 1. Hero (handoff §2) ---------- */}
+      <section id="top">
+        <Container className="pt-12 md:pt-20">
+          <div className="grid grid-cols-1 items-end gap-12 lg:grid-cols-[1.02fr_0.98fr] lg:gap-[72px]">
+            <div className="pb-2">
+              <Mono className="mb-6 block text-[10.5px] tracking-[0.2em] text-dz-text-3 md:mb-[34px]">
+                {lang === 'fr' ? 'Skincare basé sur la science' : 'Science-based skincare'}
+              </Mono>
 
-      {/* Verticals & concerns */}
-      <section className="container mx-auto px-4 py-10 md:py-14">
-        <SectionTitle sub={lang === 'fr' ? 'Trois univers, une même exigence scientifique' : 'Three universes, the same scientific rigor'}>
-          {lang === 'fr' ? 'Quelle est votre préoccupation ?' : 'What is your concern?'}
-        </SectionTitle>
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            { id: 'skincare', icon: <Droplets className="h-6 w-6 text-emerald-700" />, fr: 'Soins de la peau', en: 'Skincare', subFr: 'Acné, sensibilité, anti-âge, taches...', subEn: 'Acne, sensitivity, anti-aging, spots...' },
-            { id: 'hair', icon: <Scissors className="h-6 w-6 text-emerald-700" />, fr: 'Cheveux & Cuir chevelu', en: 'Hair & Scalp', subFr: 'Chute, pellicules, cheveux abîmés...', subEn: 'Hair loss, dandruff, damaged hair...' },
-            { id: 'wellness', icon: <HeartPulse className="h-6 w-6 text-emerald-700" />, fr: 'Bien-être', en: 'Wellness', subFr: 'Sommeil, stress, énergie, digestion...', subEn: 'Sleep, stress, energy, digestion...' },
-          ].map((v) => (
-            <div key={v.id} data-testid={`vertical-card-${v.id}`} className="p-5 rounded-2xl border border-stone-200 bg-white hover:shadow-md transition-all">
-              <button onClick={() => nav('products', null, { vertical: v.id })} className="text-left w-full">
-                <div className="h-11 w-11 rounded-xl bg-emerald-50 flex items-center justify-center mb-3">{v.icon}</div>
-                <p className="font-bold text-stone-900 text-lg" style={{ fontFamily: 'var(--font-playfair), serif' }}>{v[lang]}</p>
-                <p className="text-xs text-stone-500 mt-0.5 mb-3">{lang === 'fr' ? v.subFr : v.subEn}</p>
-              </button>
-              <div className="flex flex-wrap gap-1.5">
-                {CONCERNS.filter((c) => c.vertical === v.id).map((c) => (
-                  <button key={c.id} data-testid={`concern-${c.id}`} onClick={() => nav('hub', c.id)}
-                    className="px-2.5 py-1 rounded-full border border-stone-200 text-xs font-medium text-stone-600 hover:border-emerald-700 hover:text-emerald-800 transition-colors">
-                    {c[lang]}
+              <h1 className="m-0 mb-7 font-display text-[40px] leading-[0.96] tracking-[-0.028em] text-balance md:text-[56px] lg:text-[64px] xl:text-[88px]">
+                {lang === 'fr' ? 'Comprenez enfin ce que vous mettez sur votre ' : 'Finally understand what you put on your '}
+                <em className="italic text-dz-accent">{lang === 'fr' ? 'peau' : 'skin'}</em>
+              </h1>
+
+              <p className="m-0 mb-10 max-w-[530px] text-[16.5px] font-light leading-[1.62] text-dz-text text-pretty md:text-[18.5px]">
+                {lang === 'fr'
+                  ? 'Analysez les ingrédients, comparez les produits et trouvez la routine idéale — avec un focus unique sur les marques dermatologiques allemandes.'
+                  : 'Analyze ingredients, compare products and find your ideal routine — with a unique focus on German dermatological brands.'}
+              </p>
+
+              {/* Barre Product Finder */}
+              <form id="finder" onSubmit={submitSearch}
+                className="flex max-w-[530px] items-center gap-4 rounded-dz-pill bg-dz-surface p-2 pl-6 shadow-dz-search focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-dz-accent">
+                <input
+                  data-testid="hero-finder-input"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label={lang === 'fr' ? 'Rechercher' : 'Search'}
+                  placeholder={lang === 'fr' ? 'Un produit, un ingrédient, une préoccupation…' : 'A product, an ingredient, a concern…'}
+                  className="min-w-0 flex-1 border-none bg-transparent py-3 text-[15px] font-light text-dz-ink outline-none placeholder:text-dz-text-4"
+                />
+                <button type="submit" data-testid="hero-finder-btn"
+                  className="whitespace-nowrap rounded-dz-pill bg-dz-accent px-[26px] py-3.5 text-[14.5px] font-medium text-white transition-colors duration-250 hover:bg-dz-accent-hover">
+                  {lang === 'fr' ? 'Lancer' : 'Search'}
+                </button>
+              </form>
+
+              {/* Suggestions populaires */}
+              <div className="mt-[18px] flex flex-wrap items-center gap-2.5">
+                <Mono className="text-[10.5px] tracking-[0.14em] text-[#9B9DA1]">
+                  {lang === 'fr' ? 'Populaire' : 'Popular'}
+                </Mono>
+                {SUGGESTIONS.map((s) => (
+                  <button key={s.fr} data-testid={`hero-suggestion-${s.en.toLowerCase().replace(/\s+/g, '-')}`}
+                    onClick={() => s.go(nav)}
+                    className="rounded-dz-pill px-3.5 py-[7px] text-[13px] text-dz-text shadow-dz-chip transition-all duration-200 hover:text-dz-accent hover:shadow-dz-chip-accent">
+                    {s[lang]}
                   </button>
                 ))}
               </div>
             </div>
-          ))}
-        </div>
-      </section>
 
-      {/* Featured products */}
-      <section className="bg-stone-50 py-10 md:py-14">
-        <div className="container mx-auto px-4">
-          <div className="flex items-end justify-between mb-6">
-            <SectionTitle sub={lang === 'fr' ? 'Les mieux notés par la communauté' : 'Top rated by the community'}>
-              {lang === 'fr' ? 'Produits en vedette' : 'Featured products'}
-            </SectionTitle>
-            <Button variant="ghost" className="text-emerald-800" onClick={() => nav('products')}>
-              {lang === 'fr' ? 'Tout voir' : 'View all'} <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-            {featured.map((p) => <ProductCard key={p.slug} p={p} lang={lang} onOpen={(s) => nav('product', s)} />)}
-          </div>
-        </div>
-      </section>
-
-      {/* Ingredients */}
-      <section className="container mx-auto px-4 py-10 md:py-14">
-        <div className="flex items-end justify-between mb-6">
-          <SectionTitle sub={lang === 'fr' ? 'Ce que dit la science sur chaque actif' : 'What science says about each active'}>
-            {lang === 'fr' ? 'Ingrédients décryptés' : 'Ingredients decoded'}
-          </SectionTitle>
-          <Button variant="ghost" className="text-emerald-800" onClick={() => nav('ingredients')}>
-            {lang === 'fr' ? 'Tout voir' : 'View all'} <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-          {ingredients.slice(0, 6).map((i) => (
-            <button key={i.slug} data-testid={`home-ingredient-${i.slug}`} onClick={() => nav('ingredient', i.slug)}
-              className="p-4 rounded-xl border border-stone-200 bg-white hover:shadow-md transition-all text-left">
-              <div className="flex items-center gap-2 mb-2">
-                <FlaskConical className="h-4 w-4 text-emerald-700" />
-                <p className="font-semibold text-stone-900 text-sm">{i.name}</p>
-              </div>
-              <p className="text-xs text-stone-500 mb-2 font-mono">{i.inci}</p>
-              <div className="flex gap-1.5 flex-wrap"><SafetyBadge safety={i.safety} lang={lang} /><EvidenceBadge evidence={i.evidence} lang={lang} /></div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* German brands */}
-      <section className="bg-stone-900 text-white py-10 md:py-14">
-        <div className="container mx-auto px-4">
-          <div className="flex items-end justify-between mb-6">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold" style={{ fontFamily: 'var(--font-playfair), serif' }}>
-                🇩🇪 {lang === 'fr' ? 'L’excellence dermatologique allemande' : 'German dermatological excellence'}
-              </h2>
-              <p className="text-stone-400 mt-1 text-sm">{lang === 'fr' ? 'Plus de 100 ans de recherche et de rigueur scientifique' : 'Over 100 years of research and scientific rigor'}</p>
+            {/* Visuel en arche inversée */}
+            <div className="dz-placeholder relative h-[380px] overflow-hidden rounded-dz-arch md:h-[500px] lg:h-[620px]">
+              <img src={HERO_IMG} alt="" className="h-full w-full object-cover" />
             </div>
-            <Button variant="ghost" className="text-emerald-400 hover:text-emerald-300 hover:bg-stone-800" onClick={() => nav('german-brands')}>
-              {lang === 'fr' ? 'Découvrir' : 'Discover'} <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {german.slice(0, 5).map((b) => (
-              <button key={b.slug} data-testid={`home-brand-${b.slug}`} onClick={() => nav('brand', b.slug)}
-                className="p-4 rounded-xl bg-stone-800 hover:bg-stone-700 transition-colors text-left">
-                <p className="font-bold text-white">{b.name}</p>
-                <p className="text-xs text-stone-400 mt-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{b.city} · {b.founded}</p>
+
+          {/* ---------- 2. Bandeau de chiffres (handoff §3) ---------- */}
+          <StatsBand
+            lang={lang}
+            stats={[
+              { key: 'products', value: products.length, label: lang === 'fr' ? 'Produits analysés' : 'Products analyzed' },
+              { key: 'ingredients', value: ingredients.length, label: lang === 'fr' ? 'Ingrédients décryptés' : 'Ingredients decoded' },
+              { key: 'brands', value: german.length, label: lang === 'fr' ? 'Marques allemandes' : 'German brands' },
+            ]}
+          />
+        </Container>
+      </section>
+
+      {/* ---------- 3. Préoccupations (handoff §4) ---------- */}
+      <section id="concerns">
+        <Container className="pt-20 md:pt-32">
+          <SectionHead
+            title={lang === 'fr' ? 'Quelle est votre préoccupation ?' : 'What is your concern?'}
+            sub={lang === 'fr' ? 'Trois univers, une même exigence scientifique' : 'Three universes, the same scientific rigor'}
+          />
+          <div className="grid grid-cols-1 gap-[22px] md:grid-cols-2 lg:grid-cols-3">
+            {VERTICALS.map((v, idx) => {
+              const tags = CONCERNS.filter((c) => c.vertical === v.id)
+              return (
+                <div key={v.id} data-testid={`vertical-card-${v.id}`}
+                  className="flex flex-col gap-[22px] rounded-dz-card bg-dz-surface p-[30px] pt-[34px] shadow-dz-card transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-dz-card-hover">
+                  <div className="flex items-center justify-between">
+                    <Mono className="text-[10.5px] tracking-[0.16em] text-dz-accent">{String(idx + 1).padStart(2, '0')}</Mono>
+                    <Mono className="text-[10.5px] tracking-[0.1em] text-dz-text-4">
+                      {tags.length} {lang === 'fr' ? 'axes' : 'areas'}
+                    </Mono>
+                  </div>
+                  <div>
+                    <h3 className="m-0 mb-2 font-display text-[30px] leading-[1.1] tracking-[-0.015em]">
+                      <button onClick={() => nav('products', null, { vertical: v.id })} className="text-left transition-colors duration-200 hover:text-dz-accent">
+                        {v[lang]}
+                      </button>
+                    </h3>
+                    <p className="m-0 text-[14.5px] font-light leading-[1.5] text-dz-text-2">
+                      {v.id === 'skincare'
+                        ? (lang === 'fr' ? 'Acné, sensibilité, anti-âge, taches...' : 'Acne, sensitivity, anti-aging, spots...')
+                        : v.id === 'hair'
+                        ? (lang === 'fr' ? 'Chute, pellicules, cheveux abîmés...' : 'Hair loss, dandruff, damaged hair...')
+                        : (lang === 'fr' ? 'Sommeil, stress, énergie, digestion...' : 'Sleep, stress, energy, digestion...')}
+                    </p>
+                  </div>
+                  <div className="mt-auto flex flex-wrap gap-2">
+                    {tags.map((c) => (
+                      <button key={c.id} data-testid={`concern-${c.id}`} onClick={() => nav('hub', c.id)}
+                        className="rounded-dz-pill bg-dz-surface-2 px-3.5 py-2 text-[13px] text-dz-nav transition-all duration-200 hover:bg-dz-accent hover:text-white">
+                        {c[lang]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------- 4. Produits en vedette (handoff §5) ---------- */}
+      <section id="produits">
+        <Container className="pt-20 md:pt-32">
+          <SectionHead
+            title={lang === 'fr' ? 'Produits en vedette' : 'Featured products'}
+            sub={lang === 'fr' ? 'Les mieux notés par la communauté' : 'Top rated by the community'}
+            action={lang === 'fr' ? 'Tout voir' : 'View all'}
+            onAction={() => nav('products')}
+            testId="home-products-all"
+          />
+          <div className="grid grid-cols-1 gap-[22px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {loading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="overflow-hidden rounded-dz-card bg-dz-surface shadow-dz-card">
+                    <Skeleton className="h-[210px] rounded-none" />
+                    <div className="flex flex-col gap-2.5 p-[22px]">
+                      <Skeleton className="h-3 w-20" />
+                      <Skeleton className="h-6 w-4/5" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="mt-4 h-5 w-24" />
+                    </div>
+                  </div>
+                ))
+              : featured.map((p) => <ProductCard key={p.slug} p={p} lang={lang} onOpen={(s) => nav('product', s)} />)}
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------- 5. Ingrédients décryptés (handoff §6) ---------- */}
+      <section id="ingredients">
+        <Container className="pt-20 md:pt-32">
+          <SectionHead
+            title={lang === 'fr' ? 'Ingrédients décryptés' : 'Ingredients decoded'}
+            sub={lang === 'fr' ? 'Ce que dit la science sur chaque actif' : 'What science says about each active'}
+            action={lang === 'fr' ? 'Tout voir' : 'View all'}
+            onAction={() => nav('ingredients')}
+            testId="home-ingredients-all"
+          />
+
+          <div className="mb-[22px] flex flex-wrap gap-2">
+            {INGREDIENT_FILTERS.map((f) => (
+              <button key={f.id} data-testid={`ingredient-filter-${f.id}`} onClick={() => setFilter(f.id)}
+                aria-pressed={filter === f.id}
+                className={`cursor-pointer rounded-dz-pill px-[17px] py-[9px] text-[13px] transition-all duration-200 ${
+                  filter === f.id ? 'bg-dz-ink text-dz-on-dark' : 'bg-dz-surface text-dz-text hover:text-dz-accent'
+                }`}>
+                {f[lang]}
               </button>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* Articles */}
-      <section className="container mx-auto px-4 py-10 md:py-14">
-        <div className="flex items-end justify-between mb-6">
-          <SectionTitle sub={lang === 'fr' ? 'Apprenez à connaître votre peau' : 'Get to know your skin'}>
-            {lang === 'fr' ? 'Derniers guides' : 'Latest guides'}
-          </SectionTitle>
-          <Button variant="ghost" className="text-emerald-800" onClick={() => nav('learn')}>
-            {lang === 'fr' ? 'Tout voir' : 'View all'} <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-        <div className="grid md:grid-cols-3 gap-4">
-          {articles.slice(0, 3).map((a) => (
-            <Card key={a.slug} data-testid={`home-article-${a.slug}`} onClick={() => nav('article', a.slug)} className="cursor-pointer overflow-hidden border-stone-200 hover:shadow-lg transition-all group">
-              <div className="aspect-[16/9] overflow-hidden bg-stone-100">
-                <img src={a.image} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          <div className="rounded-dz-card bg-dz-surface px-5 py-2.5 shadow-dz-card md:px-[30px]">
+            {loading && (
+              <div className="divide-y divide-dz-rule-card">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex flex-col gap-3 py-6 md:flex-row md:items-center md:gap-[30px]">
+                    <Skeleton className="h-7 w-full md:w-[230px]" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-6 w-32" />
+                  </div>
+                ))}
               </div>
-              <CardContent className="p-4">
-                <Badge variant="secondary" className="bg-stone-100 text-stone-600 mb-2 text-[10px] uppercase">{a.category}</Badge>
-                <h3 className="font-semibold text-stone-900 leading-snug">{a.title?.[lang]}</h3>
-                <p className="text-sm text-stone-500 mt-1.5 line-clamp-2">{a.excerpt?.[lang]}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+            )}
+
+            {!loading && shownIngredients.length === 0 && (
+              <p data-testid="ingredients-empty" className="py-10 text-center text-[14.5px] font-light text-dz-text-2">
+                {lang === 'fr' ? 'Aucun ingrédient dans cette famille.' : 'No ingredient in this family.'}
+              </p>
+            )}
+
+            {!loading && shownIngredients.map((i) => (
+              <button key={i.slug} data-testid={`home-ingredient-${i.slug}`} onClick={() => nav('ingredient', i.slug)}
+                className="group grid w-full grid-cols-1 items-center gap-3 py-6 text-left shadow-dz-rule-b transition-colors duration-200 last:shadow-none hover:text-dz-accent lg:grid-cols-[230px_1fr_160px_150px] lg:gap-[30px]">
+                <span className="font-display text-[26px] leading-[1.15] tracking-[-0.015em]">{i.name}</span>
+                <span className="line-clamp-2 text-[14.5px] font-light leading-[1.55] text-dz-text-2">{i.description?.[lang]}</span>
+                <Mono className="text-[10.5px] tracking-[0.12em] text-dz-text-4">{familyOf(i.slug, lang)}</Mono>
+                <span className="lg:justify-self-end"><EvidenceBadge evidence={i.evidence} lang={lang} /></span>
+              </button>
+            ))}
+          </div>
+        </Container>
       </section>
 
-      {/* For brands CTA */}
-      <section className="container mx-auto px-4 pb-14">
-        <div className="rounded-2xl bg-emerald-900 text-white p-8 md:p-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-bold" style={{ fontFamily: 'var(--font-playfair), serif' }}>
-              {lang === 'fr' ? 'Vous êtes une marque ?' : 'Are you a brand?'}
-            </h2>
-            <p className="text-emerald-100 mt-2 max-w-xl">
-              {lang === 'fr'
-                ? 'Faites analyser et référencer vos produits sur la plateforme de référence de la skincare transparente.'
-                : 'Get your products analyzed and listed on the reference platform for transparent skincare.'}
-            </p>
+      {/* ---------- 6. Dossier marques allemandes (handoff §7) ---------- */}
+      <section id="marques" className="mt-20 bg-dz-sand md:mt-32">
+        <Container className="py-16 md:py-[104px]">
+          <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-20">
+            <div>
+              <Mono className="mb-6 block text-[10.5px] tracking-[0.2em] text-dz-sand-eyebrow">
+                {lang === 'fr' ? 'Dossier' : 'Feature'}
+              </Mono>
+              <h2 className="m-0 mb-5 font-display text-[38px] leading-[1.02] tracking-[-0.025em] text-balance md:text-[48px] xl:text-[58px]">
+                {lang === 'fr' ? 'L’excellence dermatologique allemande' : 'German dermatological excellence'}
+              </h2>
+              <p className="m-0 mb-9 max-w-[430px] text-[17.5px] font-light leading-[1.62] text-dz-sand-text">
+                {lang === 'fr' ? 'Plus de 100 ans de recherche et de rigueur scientifique.' : 'Over 100 years of research and scientific rigor.'}
+              </p>
+              <InkButton data-testid="home-german-brands-cta" onClick={() => nav('german-brands')} className="px-[30px] py-[15px] text-[14.5px]">
+                {lang === 'fr' ? 'Découvrir' : 'Discover'}
+              </InkButton>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {german.slice(0, 4).map((b) => (
+                <button key={b.slug} data-testid={`home-brand-${b.slug}`} onClick={() => nav('brand', b.slug)}
+                  className="rounded-dz-brand bg-dz-bg p-6 px-6 text-left transition-transform duration-300 hover:-translate-y-[3px]">
+                  <span className="mb-2 block font-display text-[24px] leading-none tracking-[-0.015em]">{b.name}</span>
+                  <span className="line-clamp-2 block text-[13.5px] font-light leading-[1.55] text-dz-sand-text-2">
+                    {b.city} — {b.description?.[lang]}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-          <Button data-testid="cta-for-brands" size="lg" className="bg-white text-emerald-900 hover:bg-emerald-50" onClick={() => nav('for-brands')}>
-            {lang === 'fr' ? 'Nous contacter' : 'Contact us'}
-          </Button>
-        </div>
+        </Container>
+      </section>
+
+      {/* ---------- 7. Derniers guides (handoff §8) ---------- */}
+      <section id="guides">
+        <Container className="pt-20 md:pt-32">
+          <SectionHead
+            title={lang === 'fr' ? 'Derniers guides' : 'Latest guides'}
+            sub={lang === 'fr' ? 'Apprenez à connaître votre peau' : 'Get to know your skin'}
+            action={lang === 'fr' ? 'Tout voir' : 'View all'}
+            onAction={() => nav('learn')}
+            testId="home-guides-all"
+          />
+          <div className="grid grid-cols-1 gap-[26px] lg:grid-cols-[1.35fr_1fr]">
+            {lead && (
+              <button data-testid={`home-article-${lead.slug}`} onClick={() => nav('article', lead.slug)}
+                className="flex flex-col overflow-hidden rounded-dz-lead bg-dz-surface text-left shadow-dz-card transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-dz-card-hover">
+                <span className="dz-placeholder block h-[240px] overflow-hidden md:h-[360px]">
+                  <img src={lead.image || DEFAULT_ARTICLE_IMG} alt="" className="h-full w-full object-cover" />
+                </span>
+                <span className="block px-[30px] pb-[34px] pt-7">
+                  <Mono className="mb-3 block text-[10.5px] tracking-[0.14em] text-dz-text-4">{articleMeta(lead)}</Mono>
+                  <span className="mb-3 block font-display text-[28px] leading-[1.08] tracking-[-0.02em] text-pretty md:text-[38px]">
+                    {lead.title?.[lang]}
+                  </span>
+                  <span className="block max-w-[520px] text-[15px] font-light leading-[1.6] text-dz-text-2">{lead.excerpt?.[lang]}</span>
+                </span>
+              </button>
+            )}
+            <div className="flex flex-col gap-4">
+              {secondary.map((a) => (
+                <button key={a.slug} data-testid={`home-article-${a.slug}`} onClick={() => nav('article', a.slug)}
+                  className="grid flex-1 grid-cols-[110px_1fr] items-center gap-[22px] overflow-hidden rounded-dz-guide bg-dz-surface text-left shadow-dz-card transition-transform duration-300 hover:-translate-y-[3px] md:grid-cols-[150px_1fr]">
+                  <span className="dz-placeholder block h-full self-stretch overflow-hidden">
+                    <img src={a.image || DEFAULT_ARTICLE_IMG} alt="" className="h-full w-full object-cover" />
+                  </span>
+                  <span className="block py-[22px] pr-6">
+                    <Mono className="mb-2.5 block text-[10.5px] tracking-[0.14em] text-dz-text-4">{articleMeta(a)}</Mono>
+                    <span className="block font-display text-[21px] leading-[1.15] tracking-[-0.015em] text-pretty md:text-[24px]">
+                      {a.title?.[lang]}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------- 8. CTA marques (handoff §9) ---------- */}
+      <section id="marques-pro">
+        <Container className="pt-20 md:pt-32">
+          <div className="grid grid-cols-1 items-center gap-10 rounded-dz-cta bg-dz-ink px-8 py-14 text-dz-on-dark md:grid-cols-[1fr_auto] md:gap-16 md:px-16 md:py-[72px]">
+            <div>
+              <h2 className="m-0 mb-3.5 font-display text-[34px] leading-[1.04] tracking-[-0.025em] md:text-[46px]">
+                {lang === 'fr' ? 'Vous êtes une marque ?' : 'Are you a brand?'}
+              </h2>
+              <p className="m-0 max-w-[600px] text-[17px] font-light leading-[1.62] text-dz-on-dark-muted">
+                {lang === 'fr'
+                  ? 'Faites analyser et référencer vos produits sur la plateforme de référence de la skincare transparente.'
+                  : 'Get your products analyzed and listed on the reference platform for transparent skincare.'}
+              </p>
+            </div>
+            <button data-testid="cta-for-brands" onClick={() => nav('for-brands')}
+              className="justify-self-start whitespace-nowrap rounded-dz-pill bg-dz-on-dark px-[34px] py-4 text-[15px] font-medium text-dz-ink transition-[transform,color] duration-250 hover:-translate-y-0.5 hover:text-dz-accent">
+              {lang === 'fr' ? 'Nous contacter' : 'Contact us'}
+            </button>
+          </div>
+        </Container>
       </section>
     </div>
   )
@@ -378,7 +704,7 @@ const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
 const ProductsView = ({ lang, nav, initialFilters }) => {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialFilters?.search || '')
   const [vertical, setVertical] = useState(initialFilters?.vertical || 'all')
   const [category, setCategory] = useState(initialFilters?.category || 'all')
   const [concern, setConcern] = useState(initialFilters?.concern || 'all')
@@ -422,14 +748,14 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
       <div className="flex gap-2 mb-4 flex-wrap">
         {[{ id: 'all', fr: 'Tous', en: 'All' }, ...VERTICALS].map((v) => (
           <button key={v.id} data-testid={`vertical-tab-${v.id}`} onClick={() => changeVertical(v.id)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${vertical === v.id ? 'bg-emerald-800 text-white border-emerald-800' : 'border-stone-200 text-stone-600 hover:border-stone-400'}`}>
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${vertical === v.id ? 'bg-dz-ink text-dz-on-dark border-dz-ink' : 'border-dz-rule text-dz-text hover:border-dz-text-4'}`}>
             {v[lang]}
           </button>
         ))}
       </div>
       <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dz-text-4" />
           <Input data-testid="products-search" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder={lang === 'fr' ? 'Rechercher un produit ou une marque...' : 'Search a product or brand...'} className="pl-9" />
         </div>
@@ -460,9 +786,9 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
         </div>
       </div>
       {loading ? (
-        <p className="text-stone-400 py-12 text-center">{lang === 'fr' ? 'Chargement...' : 'Loading...'}</p>
+        <p className="text-dz-text-4 py-12 text-center">{lang === 'fr' ? 'Chargement...' : 'Loading...'}</p>
       ) : products.length === 0 ? (
-        <p data-testid="no-products" className="text-stone-400 py-12 text-center">{lang === 'fr' ? 'Aucun produit trouvé.' : 'No products found.'}</p>
+        <p data-testid="no-products" className="text-dz-text-4 py-12 text-center">{lang === 'fr' ? 'Aucun produit trouvé.' : 'No products found.'}</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
           {products.map((p) => <ProductCard key={p.slug} p={p} lang={lang} onOpen={(s) => nav('product', s)} />)}
@@ -476,50 +802,50 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
 const ProductDetailView = ({ slug, lang, nav, setCompareA }) => {
   const [p, setP] = useState(null)
   useEffect(() => { fetch(`/api/products/${slug}`).then((r) => r.json()).then(setP) }, [slug])
-  if (!p) return <p className="text-center py-20 text-stone-400">...</p>
-  if (p.error) return <p className="text-center py-20 text-stone-400">{p.error}</p>
+  if (!p) return <p className="text-center py-20 text-dz-text-4">...</p>
+  if (p.error) return <p className="text-center py-20 text-dz-text-4">{p.error}</p>
   return (
     <div className="container mx-auto px-4 py-8">
-      <button onClick={() => nav('products')} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 mb-5">
+      <button onClick={() => nav('products')} className="flex items-center gap-1 text-sm text-dz-text-2 hover:text-dz-ink mb-5">
         <ArrowLeft className="h-4 w-4" /> {lang === 'fr' ? 'Retour aux produits' : 'Back to products'}
       </button>
       <div className="grid md:grid-cols-2 gap-8">
-        <div className="relative rounded-2xl overflow-hidden bg-stone-100 aspect-square">
+        <div className="relative rounded-2xl overflow-hidden bg-dz-surface-2 aspect-square">
           <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
-          {p.german_made && <Badge className="absolute top-3 left-3 bg-stone-900/85 text-white hover:bg-stone-900/85">🇩🇪 Made in Germany</Badge>}
+          {p.german_made && <Badge className="absolute top-3 left-3 bg-dz-ink/85 text-dz-on-dark hover:bg-dz-ink/85">🇩🇪 Made in Germany</Badge>}
         </div>
         <div>
-          <button data-testid="product-brand-link" onClick={() => nav('brand', p.brand_slug)} className="text-xs uppercase tracking-wider text-emerald-800 font-semibold hover:underline">{p.brand_name}</button>
-          <h1 data-testid="product-title" className="text-2xl md:text-4xl font-bold text-stone-900 mt-1" style={{ fontFamily: 'var(--font-playfair), serif' }}>{p.name}</h1>
+          <button data-testid="product-brand-link" onClick={() => nav('brand', p.brand_slug)} className="text-xs uppercase tracking-wider text-dz-accent font-semibold hover:underline">{p.brand_name}</button>
+          <h1 data-testid="product-title" className="text-2xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink mt-1">{p.name}</h1>
           <div className="flex items-center gap-4 mt-3">
-            <span className="text-2xl font-bold text-stone-900">{p.price_eur?.toFixed(2)} €</span>
+            <span className="text-2xl font-semibold text-dz-ink">{p.price_eur?.toFixed(2)} €</span>
             <Stars rating={p.rating} />
-            <Badge variant="secondary" className="bg-stone-100 text-stone-600">{label(CATEGORIES, p.category, lang)}</Badge>
+            <Badge variant="secondary" className="bg-dz-surface-2 text-dz-text">{label(CATEGORIES, p.category, lang)}</Badge>
           </div>
-          <p className="text-stone-600 mt-4 leading-relaxed">{p.description?.[lang]}</p>
+          <p className="text-dz-text mt-4 leading-relaxed">{p.description?.[lang]}</p>
 
           <div className="mt-5">
-            <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-2">{lang === 'fr' ? 'Préoccupations ciblées' : 'Targeted concerns'}</p>
+            <p className="text-xs uppercase tracking-wider text-dz-text-4 font-semibold mb-2">{lang === 'fr' ? 'Préoccupations ciblées' : 'Targeted concerns'}</p>
             <div className="flex flex-wrap gap-1.5">
-              {(p.concerns || []).map((c) => <Badge key={c} className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{label(CONCERNS, c, lang)}</Badge>)}
+              {(p.concerns || []).map((c) => <Badge key={c} className="bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg">{label(CONCERNS, c, lang)}</Badge>)}
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-2">{lang === 'fr' ? 'Types de peau' : 'Skin types'}</p>
+            <p className="text-xs uppercase tracking-wider text-dz-text-4 font-semibold mb-2">{lang === 'fr' ? 'Types de peau' : 'Skin types'}</p>
             <div className="flex flex-wrap gap-1.5">
-              {(p.skin_types || []).map((s) => <Badge key={s} variant="outline" className="border-stone-300 text-stone-600">{label(SKIN_TYPES, s, lang)}</Badge>)}
+              {(p.skin_types || []).map((s) => <Badge key={s} variant="outline" className="border-dz-chip text-dz-text">{label(SKIN_TYPES, s, lang)}</Badge>)}
             </div>
           </div>
 
           <div className="mt-6">
-            <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-2">{lang === 'fr' ? 'Actifs clés' : 'Key actives'}</p>
+            <p className="text-xs uppercase tracking-wider text-dz-text-4 font-semibold mb-2">{lang === 'fr' ? 'Actifs clés' : 'Key actives'}</p>
             <div className="grid gap-2">
               {(p.ingredient_details || []).map((i) => (
                 <button key={i.slug} data-testid={`product-ingredient-${i.slug}`} onClick={() => nav('ingredient', i.slug)}
-                  className="flex items-center justify-between p-3 rounded-lg border border-stone-200 hover:border-emerald-700 hover:shadow-sm transition-all text-left bg-white">
+                  className="flex items-center justify-between p-3 rounded-lg border border-dz-rule hover:border-dz-accent hover:shadow-sm transition-all text-left bg-white">
                   <div className="flex items-center gap-2">
-                    <FlaskConical className="h-4 w-4 text-emerald-700" />
-                    <div><p className="text-sm font-semibold text-stone-900">{i.name}</p><p className="text-[11px] text-stone-400 font-mono">{i.inci}</p></div>
+                    <FlaskConical className="h-4 w-4 text-dz-accent" />
+                    <div><p className="text-sm font-semibold text-dz-ink">{i.name}</p><p className="text-[11px] text-dz-text-4 font-mono">{i.inci}</p></div>
                   </div>
                   <SafetyBadge safety={i.safety} lang={lang} />
                 </button>
@@ -529,7 +855,7 @@ const ProductDetailView = ({ slug, lang, nav, setCompareA }) => {
 
           <div className="flex flex-col sm:flex-row gap-3 mt-7">
             <BuyButton product={p} lang={lang} className="flex-1 h-11" />
-            <Button data-testid="compare-btn" size="lg" variant="outline" className="border-stone-300 flex-1" onClick={() => { setCompareA(p.slug); nav('compare') }}>
+            <Button data-testid="compare-btn" size="lg" variant="outline" className="border-dz-chip flex-1" onClick={() => { setCompareA(p.slug); nav('compare') }}>
               <GitCompare className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Comparer' : 'Compare'}
             </Button>
           </div>
@@ -547,19 +873,19 @@ const IngredientsView = ({ lang, nav, ingredients }) => (
     </SectionTitle>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
       {ingredients.map((i) => (
-        <Card key={i.slug} data-testid={`ingredient-card-${i.slug}`} onClick={() => nav('ingredient', i.slug)} className="cursor-pointer border-stone-200 hover:shadow-lg transition-all">
+        <Card key={i.slug} data-testid={`ingredient-card-${i.slug}`} onClick={() => nav('ingredient', i.slug)} className="cursor-pointer border-dz-rule hover:shadow-lg transition-all">
           <CardContent className="p-4 md:p-5">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
-                <div className="h-9 w-9 rounded-lg bg-emerald-50 flex items-center justify-center"><FlaskConical className="h-4.5 w-4.5 text-emerald-700" /></div>
-                <div><p className="font-bold text-stone-900">{i.name}</p><p className="text-[11px] text-stone-400 font-mono">{i.inci}</p></div>
+                <div className="h-9 w-9 rounded-lg bg-dz-accent-bg flex items-center justify-center"><FlaskConical className="h-4.5 w-4.5 text-dz-accent" /></div>
+                <div><p className="font-semibold text-dz-ink">{i.name}</p><p className="text-[11px] text-dz-text-4 font-mono">{i.inci}</p></div>
               </div>
               <SafetyBadge safety={i.safety} lang={lang} />
             </div>
-            <p className="text-sm text-stone-500 mt-3 line-clamp-2">{i.description?.[lang]}</p>
+            <p className="text-sm text-dz-text-2 mt-3 line-clamp-2">{i.description?.[lang]}</p>
             <div className="flex gap-1.5 flex-wrap mt-3">
               <EvidenceBadge evidence={i.evidence} lang={lang} />
-              {(i.good_for || []).slice(0, 2).map((c) => <Badge key={c} variant="secondary" className="bg-stone-100 text-stone-600 text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
+              {(i.good_for || []).slice(0, 2).map((c) => <Badge key={c} variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
             </div>
           </CardContent>
         </Card>
@@ -571,50 +897,50 @@ const IngredientsView = ({ lang, nav, ingredients }) => (
 const IngredientDetailView = ({ slug, lang, nav }) => {
   const [i, setI] = useState(null)
   useEffect(() => { fetch(`/api/ingredients/${slug}`).then((r) => r.json()).then(setI) }, [slug])
-  if (!i) return <p className="text-center py-20 text-stone-400">...</p>
-  if (i.error) return <p className="text-center py-20 text-stone-400">{i.error}</p>
+  if (!i) return <p className="text-center py-20 text-dz-text-4">...</p>
+  if (i.error) return <p className="text-center py-20 text-dz-text-4">{i.error}</p>
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <button onClick={() => nav('ingredients')} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 mb-5">
+      <button onClick={() => nav('ingredients')} className="flex items-center gap-1 text-sm text-dz-text-2 hover:text-dz-ink mb-5">
         <ArrowLeft className="h-4 w-4" /> {lang === 'fr' ? 'Retour aux ingrédients' : 'Back to ingredients'}
       </button>
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 data-testid="ingredient-title" className="text-3xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>{i.name}</h1>
-          <p className="text-stone-400 font-mono text-sm mt-1">INCI : {i.inci}</p>
+          <h1 data-testid="ingredient-title" className="text-3xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink">{i.name}</h1>
+          <p className="text-dz-text-4 font-mono text-sm mt-1">INCI : {i.inci}</p>
         </div>
         <div className="flex gap-2"><SafetyBadge safety={i.safety} lang={lang} /><EvidenceBadge evidence={i.evidence} lang={lang} /></div>
       </div>
-      <p className="text-stone-600 mt-5 leading-relaxed text-base md:text-lg">{i.description?.[lang]}</p>
+      <p className="text-dz-text mt-5 leading-relaxed text-base md:text-lg">{i.description?.[lang]}</p>
 
       {i.regulatory?.[lang] && (
-        <div data-testid="ingredient-regulatory" className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 flex gap-3">
-          <ShieldCheck className="h-4 w-4 text-emerald-700 mt-0.5 shrink-0" />
+        <div data-testid="ingredient-regulatory" className="mt-5 rounded-xl border border-dz-rule bg-dz-bg p-4 flex gap-3">
+          <ShieldCheck className="h-4 w-4 text-dz-accent mt-0.5 shrink-0" />
           <div>
-            <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-1">{lang === 'fr' ? 'Contexte réglementaire (UE / Allemagne)' : 'Regulatory context (EU / Germany)'}</p>
-            <p className="text-sm text-stone-600 leading-relaxed">{i.regulatory[lang]}</p>
+            <p className="text-xs uppercase tracking-wider text-dz-text-4 font-semibold mb-1">{lang === 'fr' ? 'Contexte réglementaire (UE / Allemagne)' : 'Regulatory context (EU / Germany)'}</p>
+            <p className="text-sm text-dz-text leading-relaxed">{i.regulatory[lang]}</p>
           </div>
         </div>
       )}
 
       <div className="grid md:grid-cols-2 gap-4 mt-7">
-        <Card className="border-stone-200">
+        <Card className="border-dz-rule">
           <CardContent className="p-5">
-            <p className="font-semibold text-stone-900 mb-3 flex items-center gap-2"><Check className="h-4 w-4 text-emerald-700" />{lang === 'fr' ? 'Bénéfices' : 'Benefits'}</p>
+            <p className="font-semibold text-dz-ink mb-3 flex items-center gap-2"><Check className="h-4 w-4 text-dz-accent" />{lang === 'fr' ? 'Bénéfices' : 'Benefits'}</p>
             <ul className="space-y-2">
               {(i.benefits?.[lang] || []).map((b, idx) => (
-                <li key={idx} className="text-sm text-stone-600 flex items-start gap-2"><span className="text-emerald-700 mt-0.5">•</span>{b}</li>
+                <li key={idx} className="text-sm text-dz-text flex items-start gap-2"><span className="text-dz-accent mt-0.5">•</span>{b}</li>
               ))}
             </ul>
           </CardContent>
         </Card>
-        <Card className="border-stone-200">
+        <Card className="border-dz-rule">
           <CardContent className="p-5">
-            <p className="font-semibold text-stone-900 mb-3 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-700" />{lang === 'fr' ? 'Profil' : 'Profile'}</p>
-            <div className="space-y-2 text-sm text-stone-600">
+            <p className="font-semibold text-dz-ink mb-3 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-dz-accent" />{lang === 'fr' ? 'Profil' : 'Profile'}</p>
+            <div className="space-y-2 text-sm text-dz-text">
               <p>{lang === 'fr' ? 'Comédogénicité' : 'Comedogenicity'} : <span className="font-semibold">{i.comedogenic}/5</span></p>
               <p className="flex items-center gap-1.5 flex-wrap">{lang === 'fr' ? 'Recommandé pour' : 'Recommended for'} :
-                {(i.good_for || []).map((c) => <Badge key={c} variant="secondary" className="bg-stone-100 text-stone-600 text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
+                {(i.good_for || []).map((c) => <Badge key={c} variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
               </p>
             </div>
           </CardContent>
@@ -642,9 +968,9 @@ const BrandsView = ({ lang, nav, germanOnly }) => {
   return (
     <div className="container mx-auto px-4 py-8">
       {germanOnly ? (
-        <div className="rounded-2xl bg-stone-900 text-white p-8 md:p-12 mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold" style={{ fontFamily: 'var(--font-playfair), serif' }}>🇩🇪 {lang === 'fr' ? 'Marques allemandes' : 'German Brands'}</h1>
-          <p className="text-stone-300 mt-3 max-w-2xl">
+        <div className="rounded-2xl bg-dz-ink text-white p-8 md:p-12 mb-8">
+          <h1 className="text-3xl md:text-4xl font-display font-normal tracking-[-0.02em]">🇩🇪 {lang === 'fr' ? 'Marques allemandes' : 'German Brands'}</h1>
+          <p className="text-dz-chip mt-3 max-w-2xl">
             {lang === 'fr'
               ? "L'Allemagne est le berceau de la dermo-cosmétique moderne : pH physiologique, essais cliniques rigoureux, formules minimalistes. Découvrez les marques qui ont fait cette réputation."
               : 'Germany is the birthplace of modern dermo-cosmetics: physiological pH, rigorous clinical trials, minimalist formulas. Discover the brands that built this reputation.'}
@@ -657,18 +983,18 @@ const BrandsView = ({ lang, nav, germanOnly }) => {
       )}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {brands.map((b) => (
-          <Card key={b.slug} data-testid={`brand-card-${b.slug}`} onClick={() => nav('brand', b.slug)} className="cursor-pointer border-stone-200 hover:shadow-lg transition-all">
+          <Card key={b.slug} data-testid={`brand-card-${b.slug}`} onClick={() => nav('brand', b.slug)} className="cursor-pointer border-dz-rule hover:shadow-lg transition-all">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
-                <p className="text-lg font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>{b.name}</p>
+                <p className="text-lg font-display font-normal tracking-[-0.02em] text-dz-ink">{b.name}</p>
                 {b.german && <span title="Made in Germany">🇩🇪</span>}
               </div>
-              <p className="text-xs text-stone-400 mt-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{b.city}, {b.country} · {lang === 'fr' ? 'depuis' : 'since'} {b.founded}</p>
-              <p className="text-sm text-stone-500 mt-3 line-clamp-3">{b.description?.[lang]}</p>
+              <p className="text-xs text-dz-text-4 mt-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{b.city}, {b.country} · {lang === 'fr' ? 'depuis' : 'since'} {b.founded}</p>
+              <p className="text-sm text-dz-text-2 mt-3 line-clamp-3">{b.description?.[lang]}</p>
               {(b.certifications || []).length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-3">
                   {b.certifications.slice(0, 3).map((c) => (
-                    <Badge key={c} variant="secondary" className="bg-stone-100 text-stone-600 text-[10px]">{c}</Badge>
+                    <Badge key={c} variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px]">{c}</Badge>
                   ))}
                 </div>
               )}
@@ -683,44 +1009,44 @@ const BrandsView = ({ lang, nav, germanOnly }) => {
 const BrandDetailView = ({ slug, lang, nav }) => {
   const [b, setB] = useState(null)
   useEffect(() => { fetch(`/api/brands/${slug}`).then((r) => r.json()).then(setB) }, [slug])
-  if (!b) return <p className="text-center py-20 text-stone-400">...</p>
-  if (b.error) return <p className="text-center py-20 text-stone-400">{b.error}</p>
+  if (!b) return <p className="text-center py-20 text-dz-text-4">...</p>
+  if (b.error) return <p className="text-center py-20 text-dz-text-4">{b.error}</p>
   return (
     <div className="container mx-auto px-4 py-8">
-      <button onClick={() => nav('brands')} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 mb-5">
+      <button onClick={() => nav('brands')} className="flex items-center gap-1 text-sm text-dz-text-2 hover:text-dz-ink mb-5">
         <ArrowLeft className="h-4 w-4" /> {lang === 'fr' ? 'Retour aux marques' : 'Back to brands'}
       </button>
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 data-testid="brand-title" className="text-3xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>{b.name} {b.german && '🇩🇪'}</h1>
-          <p className="text-stone-400 text-sm mt-1 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{b.city}, {b.country} · {lang === 'fr' ? 'fondée en' : 'founded in'} {b.founded}</p>
+          <h1 data-testid="brand-title" className="text-3xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink">{b.name} {b.german && '🇩🇪'}</h1>
+          <p className="text-dz-text-4 text-sm mt-1 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{b.city}, {b.country} · {lang === 'fr' ? 'fondée en' : 'founded in'} {b.founded}</p>
         </div>
-        <Button variant="outline" className="border-stone-300" onClick={() => window.open(b.website, '_blank')}>
+        <Button variant="outline" className="border-dz-chip" onClick={() => window.open(b.website, '_blank')}>
           <ExternalLink className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Site officiel' : 'Official website'}
         </Button>
       </div>
-      <p className="text-stone-600 mt-4 leading-relaxed max-w-3xl">{b.description?.[lang]}</p>
+      <p className="text-dz-text mt-4 leading-relaxed max-w-3xl">{b.description?.[lang]}</p>
       <div className="grid sm:grid-cols-2 gap-3 mt-6 max-w-3xl">
         {b.manufacturer && (
-          <Card className="border-stone-200">
+          <Card className="border-dz-rule">
             <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-1.5 flex items-center gap-1.5">
+              <p className="text-xs uppercase tracking-wider text-dz-text-4 font-semibold mb-1.5 flex items-center gap-1.5">
                 <Factory className="h-3.5 w-3.5" /> {lang === 'fr' ? 'Fabricant' : 'Manufacturer'}
               </p>
-              <p data-testid="brand-manufacturer" className="text-sm font-semibold text-stone-800">{b.manufacturer}</p>
-              <p className="text-xs text-stone-500 mt-0.5">{b.city}, {b.country}</p>
+              <p data-testid="brand-manufacturer" className="text-sm font-semibold text-dz-ink">{b.manufacturer}</p>
+              <p className="text-xs text-dz-text-2 mt-0.5">{b.city}, {b.country}</p>
             </CardContent>
           </Card>
         )}
         {(b.certifications || []).length > 0 && (
-          <Card className="border-stone-200">
+          <Card className="border-dz-rule">
             <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold mb-2 flex items-center gap-1.5">
+              <p className="text-xs uppercase tracking-wider text-dz-text-4 font-semibold mb-2 flex items-center gap-1.5">
                 <BadgeCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? 'Certifications & engagements' : 'Certifications & commitments'}
               </p>
               <div className="flex flex-wrap gap-1.5" data-testid="brand-certifications">
                 {b.certifications.map((c) => (
-                  <Badge key={c} className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[11px]">{c}</Badge>
+                  <Badge key={c} className="bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg text-[11px]">{c}</Badge>
                 ))}
               </div>
             </CardContent>
@@ -748,14 +1074,14 @@ const CompareView = ({ lang, nav, products, compareA, setCompareA }) => {
     } else setResult(null)
   }, [a, b])
 
-  const rowLabel = 'text-xs uppercase tracking-wider text-stone-400 font-semibold py-3 pr-4'
+  const rowLabel = 'text-xs uppercase tracking-wider text-dz-text-4 font-semibold py-3 pr-4'
   const ingName = (slug) => result?.ingredient_details?.find((i) => i.slug === slug)?.name || slug
 
   const ProductCol = ({ p }) => (
     <div className="text-center">
       <img src={p.image} alt={p.name} className="h-24 w-24 md:h-36 md:w-36 object-cover rounded-xl mx-auto" />
-      <p className="text-[11px] uppercase tracking-wider text-stone-400 mt-2">{p.brand_name}</p>
-      <button onClick={() => nav('product', p.slug)} className="font-semibold text-stone-900 text-sm hover:underline leading-snug">{p.name}</button>
+      <p className="text-[11px] uppercase tracking-wider text-dz-text-4 mt-2">{p.brand_name}</p>
+      <button onClick={() => nav('product', p.slug)} className="font-semibold text-dz-ink text-sm hover:underline leading-snug">{p.name}</button>
     </div>
   )
 
@@ -774,9 +1100,9 @@ const CompareView = ({ lang, nav, products, compareA, setCompareA }) => {
           <SelectContent>{products.map((p) => <SelectItem key={p.slug} value={p.slug}>{p.brand_name} — {p.name}</SelectItem>)}</SelectContent>
         </Select>
       </div>
-      {!result && <p className="text-center text-stone-400 py-10">{lang === 'fr' ? 'Sélectionnez deux produits pour lancer la comparaison.' : 'Select two products to start comparing.'}</p>}
+      {!result && <p className="text-center text-dz-text-4 py-10">{lang === 'fr' ? 'Sélectionnez deux produits pour lancer la comparaison.' : 'Select two products to start comparing.'}</p>}
       {result && !result.error && (
-        <Card className="border-stone-200 overflow-hidden" data-testid="compare-result">
+        <Card className="border-dz-rule overflow-hidden" data-testid="compare-result">
           <CardContent className="p-4 md:p-6">
             <div className="grid grid-cols-[80px_1fr_1fr] md:grid-cols-[140px_1fr_1fr] gap-2 items-start">
               <div></div>
@@ -790,23 +1116,23 @@ const CompareView = ({ lang, nav, products, compareA, setCompareA }) => {
               ].map((row, idx) => (
                 <>
                   <div key={`l${idx}`} className={rowLabel}>{row.l}</div>
-                  <div key={`a${idx}`} className="py-3 text-center text-sm font-semibold text-stone-800 border-t border-stone-100">{row.va}</div>
-                  <div key={`b${idx}`} className="py-3 text-center text-sm font-semibold text-stone-800 border-t border-stone-100">{row.vb}</div>
+                  <div key={`a${idx}`} className="py-3 text-center text-sm font-semibold text-dz-ink border-t border-dz-rule-card">{row.va}</div>
+                  <div key={`b${idx}`} className="py-3 text-center text-sm font-semibold text-dz-ink border-t border-dz-rule-card">{row.vb}</div>
                 </>
               ))}
               <div className={rowLabel}>{lang === 'fr' ? 'Préoccupations' : 'Concerns'}</div>
               {[result.a, result.b].map((p, idx) => (
-                <div key={idx} className="py-3 flex flex-wrap gap-1 justify-center border-t border-stone-100">
-                  {(p.concerns || []).map((c) => <Badge key={c} variant="secondary" className="bg-stone-100 text-stone-600 text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
+                <div key={idx} className="py-3 flex flex-wrap gap-1 justify-center border-t border-dz-rule-card">
+                  {(p.concerns || []).map((c) => <Badge key={c} variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px]">{label(CONCERNS, c, lang)}</Badge>)}
                 </div>
               ))}
               <div className={rowLabel}>{lang === 'fr' ? 'Actifs' : 'Actives'}</div>
               {[result.a, result.b].map((p, idx) => (
-                <div key={idx} className="py-3 flex flex-wrap gap-1 justify-center border-t border-stone-100">
+                <div key={idx} className="py-3 flex flex-wrap gap-1 justify-center border-t border-dz-rule-card">
                   {(p.ingredients || []).map((ing) => (
                     <Badge key={ing} className={result.common_ingredients.includes(ing)
-                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]'
-                      : 'bg-stone-100 text-stone-600 hover:bg-stone-100 text-[10px]'}>
+                      ? 'bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg text-[10px]'
+                      : 'bg-dz-surface-2 text-dz-text hover:bg-dz-surface-2 text-[10px]'}>
                       {ingName(ing)}
                     </Badge>
                   ))}
@@ -814,8 +1140,8 @@ const CompareView = ({ lang, nav, products, compareA, setCompareA }) => {
               ))}
             </div>
             {result.common_ingredients.length > 0 && (
-              <p className="text-xs text-stone-500 mt-4 text-center">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-200 mr-1.5"></span>
+              <p className="text-xs text-dz-text-2 mt-4 text-center">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-dz-accent-bg mr-1.5"></span>
                 {lang === 'fr' ? 'Actifs communs aux deux produits' : 'Actives shared by both products'}
               </p>
             )}
@@ -843,9 +1169,9 @@ const ROUTINE_HINTS = {
 
 // icon + colors per section id
 const SECTION_STYLE = {
-  morning: { icon: <Sun className="h-5 w-5 text-amber-500" />, bg: 'bg-amber-50 border-amber-100' },
+  morning: { icon: <Sun className="h-5 w-5 text-dz-sand-eyebrow" />, bg: 'bg-dz-surface-2 border-dz-sand' },
   evening: { icon: <Moon className="h-5 w-5 text-indigo-500" />, bg: 'bg-indigo-50 border-indigo-100' },
-  routine: { icon: <Sparkles className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50 border-emerald-100' },
+  routine: { icon: <Sparkles className="h-5 w-5 text-dz-accent" />, bg: 'bg-dz-accent-bg border-dz-accent-bg' },
 }
 
 // Normalize routine into a sections[] array (supports legacy {morning, evening, warnings})
@@ -866,56 +1192,56 @@ const RoutineDisplay = ({ routine, alternatives = [], lang, nav }) => (
       const warnings = section.warnings || []
       return (
       <div key={section.id} data-testid={`routine-${section.id}`} className={`rounded-2xl border ${style.bg} p-4 md:p-5 mb-5`}>
-        <p className="font-bold text-stone-900 flex items-center gap-2 mb-4">
+        <p className="font-semibold text-dz-ink flex items-center gap-2 mb-4">
           {style.icon} {section.title?.[lang]}
         </p>
         <div className="space-y-2.5">
           {steps.map((s) => (
             <div key={`${section.id}-${s.order}`} data-testid={`routine-step-${section.id}-${s.category}`}
-              className="flex gap-3 items-center bg-white rounded-xl border border-stone-200 p-3 cursor-pointer hover:shadow-md transition-all"
+              className="flex gap-3 items-center bg-white rounded-xl border border-dz-rule p-3 cursor-pointer hover:shadow-md transition-all"
               onClick={() => nav('product', s.product.slug)}>
               <div className="flex flex-col items-center shrink-0">
-                <span className="h-7 w-7 rounded-full bg-stone-900 text-white text-xs font-bold flex items-center justify-center">{s.order}</span>
+                <span className="h-7 w-7 rounded-full bg-dz-ink text-white text-xs font-semibold flex items-center justify-center">{s.order}</span>
               </div>
               <img src={s.product.image} alt={s.product.name} className="h-14 w-14 md:h-16 md:w-16 rounded-lg object-cover shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
+                <p className="text-[10px] uppercase tracking-wider text-dz-accent font-semibold">
                   {label(CATEGORIES, s.category, lang)} — {ROUTINE_HINTS[s.category]?.[lang]}
                 </p>
-                <p className="font-semibold text-stone-900 text-sm leading-snug truncate">{s.product.name}</p>
+                <p className="font-semibold text-dz-ink text-sm leading-snug truncate">{s.product.name}</p>
                 <div className="flex items-center gap-2.5 mt-0.5 flex-wrap">
-                  <span className="text-[11px] text-stone-400 uppercase tracking-wide">{s.product.brand_name}</span>
-                  <span className="text-xs font-bold text-stone-900">{s.product.price_eur?.toFixed(2)} €</span>
-                  {s.product.match_percent != null && <span className="text-[11px] font-semibold text-emerald-700">{s.product.match_percent}% match</span>}
+                  <span className="text-[11px] text-dz-text-4 uppercase tracking-wide">{s.product.brand_name}</span>
+                  <span className="text-xs font-semibold text-dz-ink">{s.product.price_eur?.toFixed(2)} €</span>
+                  {s.product.match_percent != null && <span className="text-[11px] font-semibold text-dz-accent">{s.product.match_percent}% match</span>}
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4 text-stone-300 shrink-0" />
+              <ArrowRight className="h-4 w-4 text-dz-chip shrink-0" />
             </div>
           ))}
         </div>
         {warnings.map((w, wi) => (
           <div key={wi} data-testid={`routine-warning-${section.id}-${wi}`}
-            className={`mt-3 rounded-xl border p-3 flex gap-2.5 ${w.severity === 'high' ? 'bg-red-50 border-red-200' : w.severity === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
-            <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${w.severity === 'high' ? 'text-red-600' : w.severity === 'medium' ? 'text-amber-600' : 'text-stone-500'}`} />
+            className={`mt-3 rounded-xl border p-3 flex gap-2.5 ${w.severity === 'high' ? 'bg-red-50 border-red-200' : w.severity === 'medium' ? 'bg-dz-surface-2 border-dz-sand' : 'bg-dz-bg border-dz-rule'}`}>
+            <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${w.severity === 'high' ? 'text-red-600' : w.severity === 'medium' ? 'text-dz-sand-eyebrow' : 'text-dz-text-2'}`} />
             <div>
-              <p className={`text-xs font-bold ${w.severity === 'high' ? 'text-red-800' : w.severity === 'medium' ? 'text-amber-800' : 'text-stone-700'}`}>
+              <p className={`text-xs font-semibold ${w.severity === 'high' ? 'text-red-800' : w.severity === 'medium' ? 'text-dz-sand-eyebrow' : 'text-dz-nav'}`}>
                 {w.title?.[lang]}
-                <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide font-bold ${w.severity === 'high' ? 'bg-red-200 text-red-800' : w.severity === 'medium' ? 'bg-amber-200 text-amber-800' : 'bg-stone-200 text-stone-600'}`}>
+                <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide font-semibold ${w.severity === 'high' ? 'bg-red-200 text-red-800' : w.severity === 'medium' ? 'bg-dz-sand text-dz-sand-eyebrow' : 'bg-dz-rule text-dz-text'}`}>
                   {w.severity === 'high' ? (lang === 'fr' ? 'Risque élevé' : 'High risk') : w.severity === 'medium' ? (lang === 'fr' ? 'Attention' : 'Caution') : 'Info'}
                 </span>
               </p>
-              <p className="text-xs mt-1 text-stone-600 leading-relaxed">{w.message?.[lang]}</p>
-              <p className="text-[11px] text-stone-400 mt-1">{(w.products || []).join(' + ')}</p>
+              <p className="text-xs mt-1 text-dz-text leading-relaxed">{w.message?.[lang]}</p>
+              <p className="text-[11px] text-dz-text-4 mt-1">{(w.products || []).join(' + ')}</p>
             </div>
           </div>
         ))}
         {warnings.length === 0 && (
-          <p data-testid={`routine-noconflict-${section.id}`} className="mt-3 text-xs text-emerald-700 flex items-center gap-1.5">
+          <p data-testid={`routine-noconflict-${section.id}`} className="mt-3 text-xs text-dz-accent flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? "Aucun conflit d'actifs détecté dans cette routine" : 'No active-ingredient conflicts detected in this routine'}
           </p>
         )}
-        <p className="text-xs text-stone-500 mt-3 text-right">
-          {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-bold text-stone-800">
+        <p className="text-xs text-dz-text-2 mt-3 text-right">
+          {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-semibold text-dz-ink">
             {steps.reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €
           </span>
         </p>
@@ -924,19 +1250,19 @@ const RoutineDisplay = ({ routine, alternatives = [], lang, nav }) => (
 
     {alternatives.length > 0 && (
       <div className="mt-7">
-        <p className="font-semibold text-stone-900 mb-3">{lang === 'fr' ? 'Autres produits qui correspondent à votre profil' : 'Other products matching your profile'}</p>
+        <p className="font-semibold text-dz-ink mb-3">{lang === 'fr' ? 'Autres produits qui correspondent à votre profil' : 'Other products matching your profile'}</p>
         <div className="grid gap-2.5">
           {alternatives.map((p) => (
-            <Card key={p.slug} data-testid={`finder-alt-${p.slug}`} className="border-stone-200 hover:shadow-md transition-all cursor-pointer" onClick={() => nav('product', p.slug)}>
+            <Card key={p.slug} data-testid={`finder-alt-${p.slug}`} className="border-dz-rule hover:shadow-md transition-all cursor-pointer" onClick={() => nav('product', p.slug)}>
               <CardContent className="p-3 flex gap-3 items-center">
                 <img src={p.image} alt={p.name} className="h-12 w-12 rounded-lg object-cover" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider text-stone-400">{p.brand_name}</p>
-                  <p className="font-semibold text-stone-900 text-sm truncate">{p.name}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-dz-text-4">{p.brand_name}</p>
+                  <p className="font-semibold text-dz-ink text-sm truncate">{p.name}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-bold">{p.price_eur?.toFixed(2)} €</p>
-                  {p.match_percent != null && <p className="text-[11px] font-semibold text-emerald-700">{p.match_percent}%</p>}
+                  <p className="text-sm font-semibold">{p.price_eur?.toFixed(2)} €</p>
+                  {p.match_percent != null && <p className="text-[11px] font-semibold text-dz-accent">{p.match_percent}%</p>}
                 </div>
               </CardContent>
             </Card>
@@ -985,22 +1311,22 @@ const ShareRoutine = ({ routine, alternatives, profile, lang }) => {
   }
 
   return (
-    <div data-testid="share-routine" className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 md:p-5">
-      <p className="font-bold text-stone-900 flex items-center gap-2">
-        <Share2 className="h-4 w-4 text-emerald-700" /> {lang === 'fr' ? 'Partager ma routine' : 'Share my routine'}
+    <div data-testid="share-routine" className="mt-6 rounded-2xl border border-dz-accent-bg bg-dz-accent-bg p-4 md:p-5">
+      <p className="font-semibold text-dz-ink flex items-center gap-2">
+        <Share2 className="h-4 w-4 text-dz-accent" /> {lang === 'fr' ? 'Partager ma routine' : 'Share my routine'}
       </p>
-      <p className="text-sm text-stone-600 mt-1">
+      <p className="text-sm text-dz-text mt-1">
         {lang === 'fr' ? 'Générez un lien unique et envoyez votre routine à vos amis.' : 'Generate a unique link and send your routine to your friends.'}
       </p>
       {state !== 'ready' ? (
-        <Button data-testid="share-routine-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white mt-3" disabled={state === 'loading'} onClick={createLink}>
+        <Button data-testid="share-routine-btn" className="bg-dz-accent hover:bg-dz-ink text-white mt-3" disabled={state === 'loading'} onClick={createLink}>
           <Share2 className="h-4 w-4 mr-2" />
           {state === 'loading' ? (lang === 'fr' ? 'Création du lien...' : 'Creating link...') : (lang === 'fr' ? 'Créer un lien de partage' : 'Create a share link')}
         </Button>
       ) : (
         <div className="mt-3 flex flex-col sm:flex-row gap-2">
           <Input data-testid="share-routine-url" readOnly value={url} onFocus={(e) => e.target.select()} className="bg-white text-sm" />
-          <Button data-testid="share-routine-copy" variant="outline" className="border-emerald-300 text-emerald-800 shrink-0" onClick={copy}>
+          <Button data-testid="share-routine-copy" variant="outline" className="border-dz-accent text-dz-accent shrink-0" onClick={copy}>
             {copied ? <><Check className="h-4 w-4 mr-2" />{lang === 'fr' ? 'Copié !' : 'Copied!'}</> : <><Copy className="h-4 w-4 mr-2" />{lang === 'fr' ? 'Copier' : 'Copy'}</>}
           </Button>
         </div>
@@ -1025,14 +1351,14 @@ const SharedRoutineView = ({ id, lang, nav }) => {
   }, [id])
 
   if (status === 'loading') {
-    return <div className="container mx-auto px-4 py-16 max-w-2xl text-center text-stone-400">{lang === 'fr' ? 'Chargement de la routine...' : 'Loading routine...'}</div>
+    return <div className="container mx-auto px-4 py-16 max-w-2xl text-center text-dz-text-4">{lang === 'fr' ? 'Chargement de la routine...' : 'Loading routine...'}</div>
   }
   if (status === 'notfound') {
     return (
       <div className="container mx-auto px-4 py-16 max-w-2xl text-center">
-        <p className="text-stone-900 font-semibold text-lg">{lang === 'fr' ? 'Routine introuvable' : 'Routine not found'}</p>
-        <p className="text-stone-500 mt-2 text-sm">{lang === 'fr' ? "Ce lien n'est plus valide ou a expiré." : 'This link is no longer valid or has expired.'}</p>
-        <Button data-testid="shared-create-own" className="bg-emerald-800 hover:bg-emerald-900 text-white mt-5" onClick={() => nav('finder')}>
+        <p className="text-dz-ink font-semibold text-lg">{lang === 'fr' ? 'Routine introuvable' : 'Routine not found'}</p>
+        <p className="text-dz-text-2 mt-2 text-sm">{lang === 'fr' ? "Ce lien n'est plus valide ou a expiré." : 'This link is no longer valid or has expired.'}</p>
+        <Button data-testid="shared-create-own" className="bg-dz-accent hover:bg-dz-ink text-white mt-5" onClick={() => nav('finder')}>
           <Sparkles className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Créer ma propre routine' : 'Create my own routine'}
         </Button>
       </div>
@@ -1047,25 +1373,25 @@ const SharedRoutineView = ({ id, lang, nav }) => {
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
       <div className="text-center mb-6">
-        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-3"><Share2 className="h-3 w-3 mr-1" /> {lang === 'fr' ? 'Routine partagée' : 'Shared routine'}</Badge>
-        <h1 className="text-2xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+        <Badge className="bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg mb-3"><Share2 className="h-3 w-3 mr-1" /> {lang === 'fr' ? 'Routine partagée' : 'Shared routine'}</Badge>
+        <h1 className="text-2xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink">
           {lang === 'fr' ? 'Une routine personnalisée a été partagée avec vous' : 'A personalized routine has been shared with you'}
         </h1>
         {(skinLabel || concernLabels.length > 0 || budgetLabel) && (
           <div className="flex items-center justify-center gap-2 flex-wrap mt-4">
-            {skinLabel && <Badge variant="secondary" className="bg-stone-100 text-stone-600">{lang === 'fr' ? 'Peau' : 'Skin'} : {skinLabel}</Badge>}
-            {concernLabels.map((c, i) => <Badge key={i} variant="secondary" className="bg-stone-100 text-stone-600">{c}</Badge>)}
-            {budgetLabel && <Badge variant="secondary" className="bg-stone-100 text-stone-600">{lang === 'fr' ? 'Budget' : 'Budget'} : {budgetLabel}</Badge>}
+            {skinLabel && <Badge variant="secondary" className="bg-dz-surface-2 text-dz-text">{lang === 'fr' ? 'Peau' : 'Skin'} : {skinLabel}</Badge>}
+            {concernLabels.map((c, i) => <Badge key={i} variant="secondary" className="bg-dz-surface-2 text-dz-text">{c}</Badge>)}
+            {budgetLabel && <Badge variant="secondary" className="bg-dz-surface-2 text-dz-text">{lang === 'fr' ? 'Budget' : 'Budget'} : {budgetLabel}</Badge>}
           </div>
         )}
       </div>
 
       <RoutineDisplay routine={data.routine} alternatives={data.alternatives || []} lang={lang} nav={nav} />
 
-      <div className="mt-8 rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-center">
-        <p className="font-bold text-stone-900">{lang === 'fr' ? 'Envie de votre propre routine ?' : 'Want your own routine?'}</p>
-        <p className="text-sm text-stone-600 mt-1">{lang === 'fr' ? 'Répondez à 3 questions et obtenez des recommandations personnalisées.' : 'Answer 3 questions and get personalized recommendations.'}</p>
-        <Button data-testid="shared-create-own" className="bg-emerald-800 hover:bg-emerald-900 text-white mt-3" onClick={() => nav('finder')}>
+      <div className="mt-8 rounded-2xl border border-dz-accent-bg bg-dz-accent-bg p-5 text-center">
+        <p className="font-semibold text-dz-ink">{lang === 'fr' ? 'Envie de votre propre routine ?' : 'Want your own routine?'}</p>
+        <p className="text-sm text-dz-text mt-1">{lang === 'fr' ? 'Répondez à 3 questions et obtenez des recommandations personnalisées.' : 'Answer 3 questions and get personalized recommendations.'}</p>
+        <Button data-testid="shared-create-own" className="bg-dz-accent hover:bg-dz-ink text-white mt-3" onClick={() => nav('finder')}>
           <Sparkles className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Lancer le Product Finder' : 'Start the Product Finder'}
         </Button>
       </div>
@@ -1090,34 +1416,45 @@ const NewsletterSignup = ({ lang, source = 'site', variant = 'card' }) => {
       setState('done')
     } catch { setState('error') }
   }
-  const dark = variant === 'footer'
   return (
-    <div data-testid="newsletter-signup" className={`${variant === 'card' ? 'mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4 md:p-5' : ''}`}>
-      <p className={`font-bold flex items-center gap-2 ${dark ? 'text-white' : 'text-stone-900'}`}>
-        <Mail className={`h-4 w-4 ${dark ? 'text-emerald-300' : 'text-emerald-700'}`} /> {lang === 'fr' ? 'Newsletter beauté & science' : 'Beauty & science newsletter'}
+    <div data-testid="newsletter-signup"
+      className={variant === 'card' ? 'mt-6 rounded-dz-card bg-dz-surface p-7 shadow-dz-card' : ''}>
+      <Mono className="mb-3 block text-[10.5px] tracking-[0.16em] text-dz-text-4">
+        {lang === 'fr' ? 'Newsletter' : 'Newsletter'}
+      </Mono>
+      <p className="m-0 font-display text-[26px] leading-[1.15] tracking-[-0.015em] text-dz-ink">
+        {lang === 'fr' ? 'Beauté & science, une fois par mois' : 'Beauty & science, once a month'}
       </p>
-      <p className={`text-sm mt-1 ${dark ? 'text-stone-300' : 'text-stone-600'}`}>
-        {lang === 'fr' ? 'Conseils fondés sur la science et nouvelles marques allemandes, une fois par mois.' : 'Science-based advice and new German brands, once a month.'}
+      <p className="mt-2 max-w-[420px] text-[14px] font-light leading-[1.6] text-dz-text-2">
+        {lang === 'fr'
+          ? 'Conseils fondés sur la science et nouvelles marques allemandes.'
+          : 'Science-based advice and new German brands.'}
       </p>
       {state === 'done' ? (
-        <p data-testid="newsletter-success" className={`mt-3 text-sm font-medium flex items-center gap-1.5 ${dark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+        <p data-testid="newsletter-success" className="mt-4 flex items-center gap-1.5 text-[14px] font-medium text-dz-accent">
           <Check className="h-4 w-4" /> {lang === 'fr' ? 'Merci ! Vous êtes inscrit(e).' : "Thanks! You're subscribed."}
         </p>
       ) : (
-        <form onSubmit={submit} className="mt-3 flex flex-col sm:flex-row gap-2">
-          <Input data-testid="newsletter-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); if (state === 'error') setState('idle') }}
-            placeholder={lang === 'fr' ? 'Votre email' : 'Your email'} className={dark ? 'bg-white/10 border-white/20 text-white placeholder:text-stone-400' : 'bg-white'} />
-          <Button data-testid="newsletter-submit" type="submit" disabled={state === 'loading'} className="bg-emerald-800 hover:bg-emerald-900 text-white shrink-0">
+        <form onSubmit={submit}
+          className="mt-5 flex max-w-[460px] items-center gap-3 rounded-dz-pill bg-dz-surface p-2 pl-6 shadow-dz-search focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-dz-accent">
+          <input data-testid="newsletter-email" type="email" value={email}
+            onChange={(e) => { setEmail(e.target.value); if (state === 'error') setState('idle') }}
+            aria-label={lang === 'fr' ? 'Votre email' : 'Your email'}
+            placeholder={lang === 'fr' ? 'Votre email' : 'Your email'}
+            className="min-w-0 flex-1 border-none bg-transparent py-2.5 text-[15px] font-light text-dz-ink outline-none placeholder:text-dz-text-4" />
+          <button data-testid="newsletter-submit" type="submit" disabled={state === 'loading'}
+            className="whitespace-nowrap rounded-dz-pill bg-dz-accent px-6 py-3 text-[14px] font-medium text-white transition-colors duration-250 hover:bg-dz-accent-hover disabled:opacity-60">
             {state === 'loading' ? (lang === 'fr' ? 'Envoi...' : 'Sending...') : (lang === 'fr' ? "S'inscrire" : 'Subscribe')}
-          </Button>
+          </button>
         </form>
       )}
-      {state === 'error' && <p className="text-xs text-red-500 mt-2">{lang === 'fr' ? 'Email invalide, réessayez.' : 'Invalid email, try again.'}</p>}
+      {state === 'error' && (
+        <p className="mt-2 text-[12.5px] text-dz-sand-eyebrow">{lang === 'fr' ? 'Email invalide, réessayez.' : 'Invalid email, try again.'}</p>
+      )}
     </div>
   )
 }
 
-// Affiliate "Buy" button with click tracking
 const BuyButton = ({ product, lang, className = '' }) => {
   if (!product?.affiliate_url) return null
   const onClick = () => {
@@ -1130,7 +1467,7 @@ const BuyButton = ({ product, lang, className = '' }) => {
     window.open(product.affiliate_url, '_blank', 'noopener,noreferrer')
   }
   return (
-    <Button data-testid={`buy-btn-${product.slug}`} onClick={onClick} className={`bg-emerald-800 hover:bg-emerald-900 text-white ${className}`}>
+    <Button data-testid={`buy-btn-${product.slug}`} onClick={onClick} className={`bg-dz-accent hover:bg-dz-ink text-white ${className}`}>
       <ShoppingBag className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Où acheter' : 'Where to buy'}
     </Button>
   )
@@ -1185,35 +1522,35 @@ const FinderView = ({ lang, nav }) => {
   const goBack = () => { const i = order.indexOf(phase); if (i > 0) setPhase(order[i - 1]) }
 
   const VERTICAL_ICONS = {
-    skincare: <Droplets className="h-5 w-5 text-emerald-700" />,
-    hair: <Scissors className="h-5 w-5 text-emerald-700" />,
-    wellness: <HeartPulse className="h-5 w-5 text-emerald-700" />,
+    skincare: <Droplets className="h-5 w-5 text-dz-accent" />,
+    hair: <Scissors className="h-5 w-5 text-dz-accent" />,
+    wellness: <HeartPulse className="h-5 w-5 text-dz-accent" />,
   }
 
   const OptionBtn = ({ active, onClick, children, testid }) => (
     <button data-testid={testid} onClick={onClick}
-      className={`w-full p-4 md:p-5 rounded-xl border-2 text-left transition-all font-medium text-sm md:text-base flex items-center justify-between ${active ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : 'border-stone-200 bg-white text-stone-700 hover:border-stone-400'}`}>
+      className={`w-full p-4 md:p-5 rounded-xl border-2 text-left transition-all font-medium text-sm md:text-base flex items-center justify-between ${active ? 'border-dz-accent bg-dz-accent-bg text-dz-accent' : 'border-dz-rule bg-white text-dz-nav hover:border-dz-text-4'}`}>
       {children}
-      {active && <Check className="h-5 w-5 text-emerald-700" />}
+      {active && <Check className="h-5 w-5 text-dz-accent" />}
     </button>
   )
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
       <div className="text-center mb-6">
-        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-3"><Sparkles className="h-3 w-3 mr-1" /> Product Finder</Badge>
-        <h1 className="text-2xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+        <Badge className="bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg mb-3"><Sparkles className="h-3 w-3 mr-1" /> Product Finder</Badge>
+        <h1 className="text-2xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink">
           {lang === 'fr' ? 'Trouvez vos produits idéaux' : 'Find your ideal products'}
         </h1>
-        <p className="text-stone-500 mt-2 text-sm md:text-base">{lang === 'fr' ? 'Quelques questions, une routine personnalisée pour votre univers.' : 'A few questions, a personalized routine for your universe.'}</p>
+        <p className="text-dz-text-2 mt-2 text-sm md:text-base">{lang === 'fr' ? 'Quelques questions, une routine personnalisée pour votre univers.' : 'A few questions, a personalized routine for your universe.'}</p>
       </div>
-      <div className="h-1.5 bg-stone-100 rounded-full mb-8 overflow-hidden">
-        <div className="h-full bg-emerald-700 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+      <div className="h-1.5 bg-dz-surface-2 rounded-full mb-8 overflow-hidden">
+        <div className="h-full bg-dz-accent rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
       </div>
 
       {phase === 'vertical' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? 'Quel univers vous intéresse ?' : 'Which universe are you interested in?'}</p>
+          <p className="font-semibold text-dz-ink mb-4 text-lg">{lang === 'fr' ? 'Quel univers vous intéresse ?' : 'Which universe are you interested in?'}</p>
           <div className="grid gap-2.5">
             {VERTICALS.map((v) => (
               <OptionBtn key={v.id} testid={`finder-vertical-${v.id}`} active={vertical === v.id} onClick={() => chooseVertical(v.id)}>
@@ -1226,7 +1563,7 @@ const FinderView = ({ lang, nav }) => {
 
       {phase === 'skin' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? 'Quel est votre type de peau ?' : 'What is your skin type?'}</p>
+          <p className="font-semibold text-dz-ink mb-4 text-lg">{lang === 'fr' ? 'Quel est votre type de peau ?' : 'What is your skin type?'}</p>
           <div className="grid gap-2.5">
             {SKIN_TYPES.map((s) => (
               <OptionBtn key={s.id} testid={`finder-skin-${s.id}`} active={skinType === s.id} onClick={() => { setSkinType(s.id); setTimeout(() => setPhase('concerns'), 250) }}>
@@ -1234,14 +1571,14 @@ const FinderView = ({ lang, nav }) => {
               </OptionBtn>
             ))}
           </div>
-          <Button variant="outline" className="border-stone-300 mt-6" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+          <Button variant="outline" className="border-dz-chip mt-6" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
         </div>
       )}
 
       {phase === 'concerns' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-1 text-lg">{lang === 'fr' ? 'Quelles sont vos préoccupations ?' : 'What are your concerns?'}</p>
-          <p className="text-sm text-stone-400 mb-4">{lang === 'fr' ? 'Plusieurs choix possibles' : 'Multiple choices allowed'}</p>
+          <p className="font-semibold text-dz-ink mb-1 text-lg">{lang === 'fr' ? 'Quelles sont vos préoccupations ?' : 'What are your concerns?'}</p>
+          <p className="text-sm text-dz-text-4 mb-4">{lang === 'fr' ? 'Plusieurs choix possibles' : 'Multiple choices allowed'}</p>
           <div className="grid gap-2.5">
             {CONCERNS.filter((c) => c.vertical === vertical).map((c) => (
               <OptionBtn key={c.id} testid={`finder-concern-${c.id}`} active={concerns.includes(c.id)} onClick={() => toggleConcern(c.id)}>
@@ -1250,8 +1587,8 @@ const FinderView = ({ lang, nav }) => {
             ))}
           </div>
           <div className="flex gap-3 mt-6">
-            <Button variant="outline" className="border-stone-300" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
-            <Button data-testid="finder-next-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white flex-1" disabled={concerns.length === 0} onClick={() => setPhase('budget')}>
+            <Button variant="outline" className="border-dz-chip" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+            <Button data-testid="finder-next-btn" className="bg-dz-accent hover:bg-dz-ink text-white flex-1" disabled={concerns.length === 0} onClick={() => setPhase('budget')}>
               {lang === 'fr' ? 'Continuer' : 'Continue'} <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
@@ -1260,7 +1597,7 @@ const FinderView = ({ lang, nav }) => {
 
       {phase === 'budget' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? 'Quel est votre budget par produit ?' : 'What is your budget per product?'}</p>
+          <p className="font-semibold text-dz-ink mb-4 text-lg">{lang === 'fr' ? 'Quel est votre budget par produit ?' : 'What is your budget per product?'}</p>
           <div className="grid gap-2.5">
             {[
               { id: 'low', fr: 'Économique — moins de 15 €', en: 'Budget — under €15' },
@@ -1272,14 +1609,14 @@ const FinderView = ({ lang, nav }) => {
               </OptionBtn>
             ))}
           </div>
-          <Button variant="outline" className="border-stone-300 mt-6" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+          <Button variant="outline" className="border-dz-chip mt-6" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
         </div>
       )}
 
       {phase === 'avoid' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-1 text-lg">{lang === 'fr' ? 'Des ingrédients à éviter ?' : 'Any ingredients to avoid?'}</p>
-          <p className="text-sm text-stone-400 mb-4">{lang === 'fr' ? "Optionnel — nous exclurons les produits qui en contiennent" : 'Optional — we will exclude products containing them'}</p>
+          <p className="font-semibold text-dz-ink mb-1 text-lg">{lang === 'fr' ? 'Des ingrédients à éviter ?' : 'Any ingredients to avoid?'}</p>
+          <p className="text-sm text-dz-text-4 mb-4">{lang === 'fr' ? "Optionnel — nous exclurons les produits qui en contiennent" : 'Optional — we will exclude products containing them'}</p>
           <div className="grid gap-2.5">
             {AVOID_OPTIONS.map((a) => (
               <OptionBtn key={a.id} testid={`finder-avoid-${a.id}`} active={avoidIngredients.includes(a.id)} onClick={() => toggleAvoid(a.id)}>
@@ -1288,8 +1625,8 @@ const FinderView = ({ lang, nav }) => {
             ))}
           </div>
           <div className="flex gap-3 mt-6">
-            <Button variant="outline" className="border-stone-300" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
-            <Button data-testid="finder-submit-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white flex-1" onClick={() => submit()}>
+            <Button variant="outline" className="border-dz-chip" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+            <Button data-testid="finder-submit-btn" className="bg-dz-accent hover:bg-dz-ink text-white flex-1" onClick={() => submit()}>
               {avoidIngredients.length > 0 ? (lang === 'fr' ? 'Voir ma routine' : 'See my routine') : (lang === 'fr' ? 'Passer — voir ma routine' : 'Skip — see my routine')} <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
@@ -1299,13 +1636,13 @@ const FinderView = ({ lang, nav }) => {
       {phase === 'results' && (
         <div>
           {loading ? (
-            <p className="text-center text-stone-400 py-14">{lang === 'fr' ? 'Construction de votre routine...' : 'Building your routine...'}</p>
+            <p className="text-center text-dz-text-4 py-14">{lang === 'fr' ? 'Construction de votre routine...' : 'Building your routine...'}</p>
           ) : (
             <div>
-              <p className="font-semibold text-stone-900 mb-1 text-lg text-center" data-testid="finder-results-title">
+              <p className="font-semibold text-dz-ink mb-1 text-lg text-center" data-testid="finder-results-title">
                 {lang === 'fr' ? 'Votre routine personnalisée' : 'Your personalized routine'}
               </p>
-              <p className="text-sm text-stone-400 text-center mb-6">
+              <p className="text-sm text-dz-text-4 text-center mb-6">
                 {lang === 'fr' ? 'Étape par étape, adaptée à votre profil.' : 'Step by step, tailored to your profile.'}
               </p>
 
@@ -1315,7 +1652,7 @@ const FinderView = ({ lang, nav }) => {
 
               <NewsletterSignup lang={lang} source="finder" />
 
-              <Button data-testid="finder-restart" variant="outline" className="border-stone-300 mt-6 w-full" onClick={reset}>
+              <Button data-testid="finder-restart" variant="outline" className="border-dz-chip mt-6 w-full" onClick={reset}>
                 {lang === 'fr' ? 'Recommencer le quiz' : 'Restart the quiz'}
               </Button>
             </div>
@@ -1334,9 +1671,9 @@ const HubsView = ({ lang, nav }) => {
     fetch('/api/hubs').then((r) => r.json()).then((d) => { setHubs(d.hubs || []); setLoading(false) })
   }, [])
   const vIcons = {
-    skincare: <Droplets className="h-4 w-4 text-emerald-700" />,
-    hair: <Scissors className="h-4 w-4 text-emerald-700" />,
-    wellness: <HeartPulse className="h-4 w-4 text-emerald-700" />,
+    skincare: <Droplets className="h-4 w-4 text-dz-accent" />,
+    hair: <Scissors className="h-4 w-4 text-dz-accent" />,
+    wellness: <HeartPulse className="h-4 w-4 text-dz-accent" />,
   }
   return (
     <div className="container mx-auto px-4 py-8">
@@ -1344,23 +1681,23 @@ const HubsView = ({ lang, nav }) => {
         {lang === 'fr' ? 'Conseils par préoccupation' : 'Advice by concern'}
       </SectionTitle>
       {loading ? (
-        <p className="text-stone-400 py-12 text-center">{lang === 'fr' ? 'Chargement...' : 'Loading...'}</p>
+        <p className="text-dz-text-4 py-12 text-center">{lang === 'fr' ? 'Chargement...' : 'Loading...'}</p>
       ) : (
         VERTICALS.map((v) => {
           const list = hubs.filter((h) => h.vertical === v.id)
           if (list.length === 0) return null
           return (
             <div key={v.id} className="mb-9">
-              <p className="font-bold text-stone-900 text-lg mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+              <p className="font-display font-normal tracking-[-0.02em] text-dz-ink text-lg mb-3 flex items-center gap-2">
                 {vIcons[v.id]} {v[lang]}
               </p>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {list.map((h) => (
-                  <Card key={h.slug} data-testid={`hub-card-${h.slug}`} onClick={() => nav('hub', h.slug)} className="cursor-pointer border-stone-200 hover:shadow-lg hover:border-emerald-700/40 transition-all">
+                  <Card key={h.slug} data-testid={`hub-card-${h.slug}`} onClick={() => nav('hub', h.slug)} className="cursor-pointer border-dz-rule hover:shadow-lg hover:border-dz-accent/40 transition-all">
                     <CardContent className="p-4 md:p-5">
-                      <p className="font-bold text-stone-900">{h.title?.[lang]}</p>
-                      <p className="text-sm text-stone-500 mt-1.5 line-clamp-3">{h.definition?.[lang]}</p>
-                      <p className="text-xs text-emerald-800 font-semibold mt-3 flex items-center gap-1">
+                      <p className="font-semibold text-dz-ink">{h.title?.[lang]}</p>
+                      <p className="text-sm text-dz-text-2 mt-1.5 line-clamp-3">{h.definition?.[lang]}</p>
+                      <p className="text-xs text-dz-accent font-semibold mt-3 flex items-center gap-1">
                         {lang === 'fr' ? 'Lire le guide complet' : 'Read the full guide'} <ArrowRight className="h-3 w-3" />
                       </p>
                     </CardContent>
@@ -1378,41 +1715,41 @@ const HubsView = ({ lang, nav }) => {
 const HubDetailView = ({ slug, lang, nav }) => {
   const [h, setH] = useState(null)
   useEffect(() => { setH(null); fetch(`/api/hubs/${slug}`).then((r) => r.json()).then(setH) }, [slug])
-  if (!h) return <p className="text-center py-20 text-stone-400">...</p>
-  if (h.error) return <p className="text-center py-20 text-stone-400">{h.error}</p>
+  if (!h) return <p className="text-center py-20 text-dz-text-4">...</p>
+  if (h.error) return <p className="text-center py-20 text-dz-text-4">{h.error}</p>
   const vLabel = VERTICALS.find((v) => v.id === h.vertical)
   return (
     <div>
-      <div className="bg-gradient-to-b from-emerald-50 to-white">
+      <div className="bg-dz-bg">
         <div className="container mx-auto px-4 py-8 md:py-12 max-w-4xl">
-          <button onClick={() => nav('hubs')} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 mb-5">
+          <button onClick={() => nav('hubs')} className="flex items-center gap-1 text-sm text-dz-text-2 hover:text-dz-ink mb-5">
             <ArrowLeft className="h-4 w-4" /> {lang === 'fr' ? 'Tous les conseils' : 'All advice'}
           </button>
-          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-3">{vLabel?.[lang]}</Badge>
-          <h1 data-testid="hub-title" className="text-3xl md:text-5xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>{h.title?.[lang]}</h1>
-          <p className="text-stone-600 mt-4 leading-relaxed text-base md:text-lg">{h.definition?.[lang]}</p>
+          <Badge className="bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg mb-3">{vLabel?.[lang]}</Badge>
+          <h1 data-testid="hub-title" className="text-3xl md:text-5xl font-display font-normal tracking-[-0.02em] text-dz-ink">{h.title?.[lang]}</h1>
+          <p className="text-dz-text mt-4 leading-relaxed text-base md:text-lg">{h.definition?.[lang]}</p>
         </div>
       </div>
 
       <div className="container mx-auto px-4 max-w-4xl pb-10">
         {/* Causes & mistakes */}
         <div className="grid md:grid-cols-2 gap-4 mt-6">
-          <Card className="border-stone-200">
+          <Card className="border-dz-rule">
             <CardContent className="p-5">
-              <p className="font-semibold text-stone-900 mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4 text-emerald-700" />{lang === 'fr' ? 'Causes fréquentes' : 'Common causes'}</p>
+              <p className="font-semibold text-dz-ink mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4 text-dz-accent" />{lang === 'fr' ? 'Causes fréquentes' : 'Common causes'}</p>
               <ul className="space-y-2" data-testid="hub-causes">
                 {(h.causes?.[lang] || []).map((c, idx) => (
-                  <li key={idx} className="text-sm text-stone-600 flex items-start gap-2"><span className="text-emerald-700 mt-0.5">•</span>{c}</li>
+                  <li key={idx} className="text-sm text-dz-text flex items-start gap-2"><span className="text-dz-accent mt-0.5">•</span>{c}</li>
                 ))}
               </ul>
             </CardContent>
           </Card>
-          <Card className="border-amber-200 bg-amber-50/40">
+          <Card className="border-dz-sand bg-dz-surface-2/40">
             <CardContent className="p-5">
-              <p className="font-semibold text-stone-900 mb-3 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />{lang === 'fr' ? 'Erreurs à éviter' : 'Mistakes to avoid'}</p>
+              <p className="font-semibold text-dz-ink mb-3 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-dz-sand-eyebrow" />{lang === 'fr' ? 'Erreurs à éviter' : 'Mistakes to avoid'}</p>
               <ul className="space-y-2" data-testid="hub-mistakes">
                 {(h.mistakes?.[lang] || []).map((m, idx) => (
-                  <li key={idx} className="text-sm text-stone-600 flex items-start gap-2"><X className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />{m}</li>
+                  <li key={idx} className="text-sm text-dz-text flex items-start gap-2"><X className="h-3.5 w-3.5 text-dz-sand-eyebrow mt-0.5 shrink-0" />{m}</li>
                 ))}
               </ul>
             </CardContent>
@@ -1422,16 +1759,16 @@ const HubDetailView = ({ slug, lang, nav }) => {
         {/* Key ingredients */}
         {(h.ingredient_details || []).length > 0 && (
           <div className="mt-8">
-            <p className="font-bold text-stone-900 text-lg mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
-              <FlaskConical className="h-5 w-5 text-emerald-700" /> {lang === 'fr' ? 'Les actifs qui ont fait leurs preuves' : 'The actives that proved themselves'}
+            <p className="font-display font-normal tracking-[-0.02em] text-dz-ink text-lg mb-3 flex items-center gap-2">
+              <FlaskConical className="h-5 w-5 text-dz-accent" /> {lang === 'fr' ? 'Les actifs qui ont fait leurs preuves' : 'The actives that proved themselves'}
             </p>
             <div className="grid sm:grid-cols-2 gap-2.5" data-testid="hub-ingredients">
               {h.ingredient_details.map((i) => (
                 <button key={i.slug} data-testid={`hub-ingredient-${i.slug}`} onClick={() => nav('ingredient', i.slug)}
-                  className="flex items-center justify-between p-3 rounded-lg border border-stone-200 hover:border-emerald-700 hover:shadow-sm transition-all text-left bg-white">
+                  className="flex items-center justify-between p-3 rounded-lg border border-dz-rule hover:border-dz-accent hover:shadow-sm transition-all text-left bg-white">
                   <div>
-                    <p className="text-sm font-semibold text-stone-900">{i.name}</p>
-                    <p className="text-[11px] text-stone-400 font-mono">{i.inci}</p>
+                    <p className="text-sm font-semibold text-dz-ink">{i.name}</p>
+                    <p className="text-[11px] text-dz-text-4 font-mono">{i.inci}</p>
                   </div>
                   <div className="flex gap-1.5"><SafetyBadge safety={i.safety} lang={lang} /><EvidenceBadge evidence={i.evidence} lang={lang} /></div>
                 </button>
@@ -1441,14 +1778,14 @@ const HubDetailView = ({ slug, lang, nav }) => {
         )}
 
         {/* Buying guide */}
-        <div className="mt-8 rounded-2xl bg-emerald-900 text-white p-6 md:p-8">
-          <p className="font-bold text-lg mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
-            <ShoppingBag className="h-5 w-5 text-emerald-300" /> {lang === 'fr' ? "Guide d'achat" : 'Buying guide'}
+        <div className="mt-8 rounded-2xl bg-dz-ink text-white p-6 md:p-8">
+          <p className="font-display font-normal tracking-[-0.02em] text-lg mb-4 flex items-center gap-2">
+            <ShoppingBag className="h-5 w-5 text-dz-on-dark" /> {lang === 'fr' ? "Guide d'achat" : 'Buying guide'}
           </p>
           <ol className="space-y-3" data-testid="hub-buying-guide">
             {(h.buying_guide?.[lang] || []).map((g, idx) => (
-              <li key={idx} className="flex items-start gap-3 text-sm md:text-base text-emerald-50">
-                <span className="h-6 w-6 rounded-full bg-emerald-700 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
+              <li key={idx} className="flex items-start gap-3 text-sm md:text-base text-dz-accent-bg">
+                <span className="h-6 w-6 rounded-full bg-dz-accent text-white text-xs font-semibold flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
                 {g}
               </li>
             ))}
@@ -1470,21 +1807,21 @@ const HubDetailView = ({ slug, lang, nav }) => {
         {/* FAQ */}
         {(h.faqs || []).length > 0 && (
           <div className="mt-9">
-            <p className="font-bold text-stone-900 text-lg mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
-              <HelpCircle className="h-5 w-5 text-emerald-700" /> {lang === 'fr' ? 'Questions fréquentes' : 'Frequently asked questions'}
+            <p className="font-display font-normal tracking-[-0.02em] text-dz-ink text-lg mb-3 flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-dz-accent" /> {lang === 'fr' ? 'Questions fréquentes' : 'Frequently asked questions'}
             </p>
-            <Accordion type="single" collapsible className="border border-stone-200 rounded-xl px-4 bg-white" data-testid="hub-faqs">
+            <Accordion type="single" collapsible className="border border-dz-rule rounded-xl px-4 bg-white" data-testid="hub-faqs">
               {h.faqs.map((f, idx) => (
                 <AccordionItem key={idx} value={`faq-${idx}`} className={idx === h.faqs.length - 1 ? 'border-b-0' : ''}>
-                  <AccordionTrigger className="text-left text-sm font-semibold text-stone-900 hover:no-underline">{f.q?.[lang]}</AccordionTrigger>
-                  <AccordionContent className="text-sm text-stone-600 leading-relaxed">{f.a?.[lang]}</AccordionContent>
+                  <AccordionTrigger className="text-left text-sm font-semibold text-dz-ink hover:no-underline">{f.q?.[lang]}</AccordionTrigger>
+                  <AccordionContent className="text-sm text-dz-text leading-relaxed">{f.a?.[lang]}</AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
           </div>
         )}
 
-        <p className="text-[11px] text-stone-400 mt-8">
+        <p className="text-[11px] text-dz-text-4 mt-8">
           {lang === 'fr'
             ? 'Ces informations sont éducatives et ne remplacent pas un avis médical. Consultez un professionnel de santé en cas de symptômes persistants.'
             : 'This information is educational and does not replace medical advice. Consult a healthcare professional if symptoms persist.'}
@@ -1513,24 +1850,24 @@ const LearnView = ({ lang, nav, articles }) => {
       <div className="flex gap-2 mb-6 flex-wrap">
         {cats.map((c) => (
           <button key={c.id} data-testid={`learn-filter-${c.id}`} onClick={() => setCat(c.id)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${cat === c.id ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-200 text-stone-600 hover:border-stone-400'}`}>
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${cat === c.id ? 'bg-dz-ink text-dz-on-dark border-dz-ink' : 'border-dz-rule text-dz-text hover:border-dz-text-4'}`}>
             {c[lang]}
           </button>
         ))}
       </div>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((a) => (
-          <Card key={a.slug} data-testid={`article-card-${a.slug}`} onClick={() => nav('article', a.slug)} className="cursor-pointer overflow-hidden border-stone-200 hover:shadow-lg transition-all group">
-            <div className="aspect-[16/9] overflow-hidden bg-stone-100">
+          <Card key={a.slug} data-testid={`article-card-${a.slug}`} onClick={() => nav('article', a.slug)} className="cursor-pointer overflow-hidden border-dz-rule hover:shadow-lg transition-all group">
+            <div className="aspect-[16/9] overflow-hidden bg-dz-surface-2">
               <img src={a.image} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
             </div>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Badge variant="secondary" className="bg-stone-100 text-stone-600 text-[10px] uppercase">{a.category}</Badge>
-                <span className="text-[11px] text-stone-400">{a.published_at}</span>
+                <Badge variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px] uppercase">{a.category}</Badge>
+                <span className="text-[11px] text-dz-text-4">{a.published_at}</span>
               </div>
-              <h3 className="font-semibold text-stone-900 leading-snug">{a.title?.[lang]}</h3>
-              <p className="text-sm text-stone-500 mt-1.5 line-clamp-2">{a.excerpt?.[lang]}</p>
+              <h3 className="font-semibold text-dz-ink leading-snug">{a.title?.[lang]}</h3>
+              <p className="text-sm text-dz-text-2 mt-1.5 line-clamp-2">{a.excerpt?.[lang]}</p>
             </CardContent>
           </Card>
         ))}
@@ -1542,20 +1879,20 @@ const LearnView = ({ lang, nav, articles }) => {
 const ArticleDetailView = ({ slug, lang, nav }) => {
   const [a, setA] = useState(null)
   useEffect(() => { fetch(`/api/articles/${slug}`).then((r) => r.json()).then(setA) }, [slug])
-  if (!a) return <p className="text-center py-20 text-stone-400">...</p>
-  if (a.error) return <p className="text-center py-20 text-stone-400">{a.error}</p>
+  if (!a) return <p className="text-center py-20 text-dz-text-4">...</p>
+  if (a.error) return <p className="text-center py-20 text-dz-text-4">{a.error}</p>
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
-      <button onClick={() => nav('learn')} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 mb-5">
+      <button onClick={() => nav('learn')} className="flex items-center gap-1 text-sm text-dz-text-2 hover:text-dz-ink mb-5">
         <ArrowLeft className="h-4 w-4" /> {lang === 'fr' ? 'Retour aux guides' : 'Back to guides'}
       </button>
-      <Badge variant="secondary" className="bg-stone-100 text-stone-600 text-[10px] uppercase mb-3">{a.category}</Badge>
-      <h1 data-testid="article-title" className="text-3xl md:text-4xl font-bold text-stone-900 leading-tight" style={{ fontFamily: 'var(--font-playfair), serif' }}>{a.title?.[lang]}</h1>
-      <p className="text-stone-400 text-sm mt-2">{a.published_at}</p>
+      <Badge variant="secondary" className="bg-dz-surface-2 text-dz-text text-[10px] uppercase mb-3">{a.category}</Badge>
+      <h1 data-testid="article-title" className="text-3xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink leading-tight">{a.title?.[lang]}</h1>
+      <p className="text-dz-text-4 text-sm mt-2">{a.published_at}</p>
       <img src={a.image} alt="" className="rounded-2xl w-full aspect-[16/8] object-cover mt-6" />
       <div className="mt-7 space-y-5">
         {(a.content?.[lang] || '').split('\n\n').map((para, idx) => (
-          <p key={idx} className="text-stone-700 leading-relaxed text-base md:text-lg">{para}</p>
+          <p key={idx} className="text-dz-nav leading-relaxed text-base md:text-lg">{para}</p>
         ))}
       </div>
     </div>
@@ -1578,11 +1915,11 @@ const ForBrandsView = ({ lang }) => {
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="grid md:grid-cols-2 gap-8 items-start">
         <div>
-          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-3"><Building2 className="h-3 w-3 mr-1" />{lang === 'fr' ? 'Espace marques' : 'Brand space'}</Badge>
-          <h1 className="text-3xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+          <Badge className="bg-dz-accent-bg text-dz-accent hover:bg-dz-accent-bg mb-3"><Building2 className="h-3 w-3 mr-1" />{lang === 'fr' ? 'Espace marques' : 'Brand space'}</Badge>
+          <h1 className="text-3xl md:text-4xl font-display font-normal tracking-[-0.02em] text-dz-ink">
             {lang === 'fr' ? 'Référencez vos produits sur Dermalyze' : 'List your products on Dermalyze'}
           </h1>
-          <p className="text-stone-600 mt-4 leading-relaxed">
+          <p className="text-dz-text mt-4 leading-relaxed">
             {lang === 'fr'
               ? 'Rejoignez la plateforme de référence de la skincare transparente. Nos analyses indépendantes mettent en valeur les formules honnêtes et efficaces.'
               : 'Join the reference platform for transparent skincare. Our independent analyses highlight honest and effective formulas.'}
@@ -1592,38 +1929,38 @@ const ForBrandsView = ({ lang }) => {
               ? ['Visibilité auprès d’une audience qualifiée', 'Analyses ingrédients basées sur la science', 'Liens d’achat et suivi des performances', 'Présence bilingue FR / EN']
               : ['Visibility with a qualified audience', 'Science-based ingredient analyses', 'Purchase links and performance tracking', 'Bilingual FR / EN presence']
             ).map((t, idx) => (
-              <li key={idx} className="flex items-start gap-2 text-sm text-stone-700"><Check className="h-4 w-4 text-emerald-700 mt-0.5" />{t}</li>
+              <li key={idx} className="flex items-start gap-2 text-sm text-dz-nav"><Check className="h-4 w-4 text-dz-accent mt-0.5" />{t}</li>
             ))}
           </ul>
         </div>
-        <Card className="border-stone-200">
+        <Card className="border-dz-rule">
           <CardContent className="p-6">
             {sent ? (
               <div className="text-center py-10" data-testid="lead-success">
-                <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4"><Check className="h-6 w-6 text-emerald-700" /></div>
-                <p className="font-semibold text-stone-900">{lang === 'fr' ? 'Message envoyé !' : 'Message sent!'}</p>
-                <p className="text-sm text-stone-500 mt-1">{lang === 'fr' ? 'Notre équipe vous recontactera sous 48h.' : 'Our team will get back to you within 48h.'}</p>
+                <div className="h-12 w-12 rounded-full bg-dz-accent-bg flex items-center justify-center mx-auto mb-4"><Check className="h-6 w-6 text-dz-accent" /></div>
+                <p className="font-semibold text-dz-ink">{lang === 'fr' ? 'Message envoyé !' : 'Message sent!'}</p>
+                <p className="text-sm text-dz-text-2 mt-1">{lang === 'fr' ? 'Notre équipe vous recontactera sous 48h.' : 'Our team will get back to you within 48h.'}</p>
               </div>
             ) : (
               <form onSubmit={submit} className="space-y-4">
                 <div>
-                  <Label className="text-stone-700">{lang === 'fr' ? 'Nom de la marque *' : 'Brand name *'}</Label>
+                  <Label className="text-dz-nav">{lang === 'fr' ? 'Nom de la marque *' : 'Brand name *'}</Label>
                   <Input data-testid="lead-brand-name" required value={form.brand_name} onChange={(e) => setForm({ ...form, brand_name: e.target.value })} className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-stone-700">{lang === 'fr' ? 'Votre nom' : 'Your name'}</Label>
+                  <Label className="text-dz-nav">{lang === 'fr' ? 'Votre nom' : 'Your name'}</Label>
                   <Input data-testid="lead-contact-name" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-stone-700">Email *</Label>
+                  <Label className="text-dz-nav">Email *</Label>
                   <Input data-testid="lead-email" required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-stone-700">Message</Label>
+                  <Label className="text-dz-nav">Message</Label>
                   <Textarea data-testid="lead-message" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="mt-1" rows={4} />
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
-                <Button data-testid="lead-submit" type="submit" className="w-full bg-emerald-800 hover:bg-emerald-900 text-white">
+                <Button data-testid="lead-submit" type="submit" className="w-full bg-dz-accent hover:bg-dz-ink text-white">
                   <Mail className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Envoyer la demande' : 'Send request'}
                 </Button>
               </form>
@@ -1795,14 +2132,14 @@ const AdminCrud = ({ entity, token, lang }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <p className="text-sm text-stone-500">{items.length} {lang === 'fr' ? 'éléments' : 'items'}</p>
+        <p className="text-sm text-dz-text-2">{items.length} {lang === 'fr' ? 'éléments' : 'items'}</p>
         <div className="flex gap-2">
           {entity === 'articles' && (
-            <Button data-testid="admin-ai-generate" size="sm" variant="outline" className="border-emerald-300 text-emerald-800" onClick={() => { setGenError(''); setGenOpen(true) }}>
+            <Button data-testid="admin-ai-generate" size="sm" variant="outline" className="border-dz-accent text-dz-accent" onClick={() => { setGenError(''); setGenOpen(true) }}>
               <Sparkles className="h-4 w-4 mr-1" /> {lang === 'fr' ? 'Générer avec l\u2019IA' : 'Generate with AI'}
             </Button>
           )}
-          <Button data-testid={`admin-add-${entity}`} size="sm" className="bg-emerald-800 hover:bg-emerald-900 text-white" onClick={startNew}>
+          <Button data-testid={`admin-add-${entity}`} size="sm" className="bg-dz-accent hover:bg-dz-ink text-white" onClick={startNew}>
             <Plus className="h-4 w-4 mr-1" /> {lang === 'fr' ? 'Ajouter' : 'Add'}
           </Button>
         </div>
@@ -1811,24 +2148,24 @@ const AdminCrud = ({ entity, token, lang }) => {
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-700" /> {lang === 'fr' ? 'Générer un article (IA)' : 'Generate an article (AI)'}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-dz-accent" /> {lang === 'fr' ? 'Générer un article (IA)' : 'Generate an article (AI)'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs text-stone-600">{lang === 'fr' ? 'Sujet de l\u2019article' : 'Article topic'}</Label>
+              <Label className="text-xs text-dz-text">{lang === 'fr' ? 'Sujet de l\u2019article' : 'Article topic'}</Label>
               <Textarea data-testid="ai-topic" value={genTopic} onChange={(e) => setGenTopic(e.target.value)} rows={2} className="mt-1"
                 placeholder={lang === 'fr' ? 'Ex : Comment utiliser la niacinamide' : 'e.g. How to use niacinamide'} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-stone-600">{lang === 'fr' ? 'Univers' : 'Universe'}</Label>
+                <Label className="text-xs text-dz-text">{lang === 'fr' ? 'Univers' : 'Universe'}</Label>
                 <Select value={genVertical} onValueChange={setGenVertical}>
                   <SelectTrigger data-testid="ai-vertical" className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>{VERTICALS.map((v) => <SelectItem key={v.id} value={v.id}>{v[lang]}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-stone-600">{lang === 'fr' ? 'Catégorie' : 'Category'}</Label>
+                <Label className="text-xs text-dz-text">{lang === 'fr' ? 'Catégorie' : 'Category'}</Label>
                 <Select value={genCategory} onValueChange={setGenCategory}>
                   <SelectTrigger data-testid="ai-category" className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1841,20 +2178,20 @@ const AdminCrud = ({ entity, token, lang }) => {
               </div>
             </div>
             {genError && <p className="text-xs text-red-600">{genError}</p>}
-            <Button data-testid="ai-generate-btn" className="w-full bg-emerald-800 hover:bg-emerald-900 text-white" disabled={genBusy || genTopic.trim().length < 3} onClick={generate}>
+            <Button data-testid="ai-generate-btn" className="w-full bg-dz-accent hover:bg-dz-ink text-white" disabled={genBusy || genTopic.trim().length < 3} onClick={generate}>
               {genBusy ? (lang === 'fr' ? 'Génération en cours\u2026 (10-20s)' : 'Generating\u2026 (10-20s)') : (lang === 'fr' ? 'Générer' : 'Generate')}
             </Button>
-            <p className="text-[11px] text-stone-400">{lang === 'fr' ? 'Le contenu généré s\u2019ouvrira en brouillon pour révision avant publication.' : 'Generated content opens as a draft for review before publishing.'}</p>
+            <p className="text-[11px] text-dz-text-4">{lang === 'fr' ? 'Le contenu généré s\u2019ouvrira en brouillon pour révision avant publication.' : 'Generated content opens as a draft for review before publishing.'}</p>
           </div>
         </DialogContent>
       </Dialog>
 
-      <div className="border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-100">
+      <div className="border border-dz-rule rounded-lg overflow-hidden divide-y divide-dz-rule-card">
         {items.map((item) => (
-          <div key={item.id || item.slug} data-testid={`admin-row-${item.slug}`} className="flex items-center justify-between px-4 py-2.5 bg-white hover:bg-stone-50">
+          <div key={item.id || item.slug} data-testid={`admin-row-${item.slug}`} className="flex items-center justify-between px-4 py-2.5 bg-white hover:bg-dz-bg">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-stone-900 truncate">{displayName(item)}</p>
-              <p className="text-xs text-stone-400 font-mono">{item.slug}</p>
+              <p className="text-sm font-medium text-dz-ink truncate">{displayName(item)}</p>
+              <p className="text-xs text-dz-text-4 font-mono">{item.slug}</p>
             </div>
             <div className="flex gap-1.5 shrink-0">
               <Button data-testid={`admin-edit-${item.slug}`} size="sm" variant="ghost" onClick={() => startEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -1886,13 +2223,13 @@ const AdminCrud = ({ entity, token, lang }) => {
                 }
                 return (
                   <div key={f.path}>
-                    <Label className="text-xs text-stone-600">{f.label}</Label>
+                    <Label className="text-xs text-dz-text">{f.label}</Label>
                     {f.type === 'textarea' || f.type === 'json' ? (
                       <Textarea data-testid={`admin-field-${f.path}`} value={value} onChange={(e) => onChange(e.target.value)} rows={f.type === 'json' ? 6 : 3} className="mt-1" />
                     ) : f.type === 'bool' ? (
                       <div className="mt-1">
                         <button type="button" data-testid={`admin-field-${f.path}`} onClick={() => setEditing((cur) => setPath(cur, f.path, !getPath(cur, f.path)))}
-                          className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${getPath(editing, f.path) ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-stone-50 border-stone-200 text-stone-500'}`}>
+                          className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${getPath(editing, f.path) ? 'bg-dz-accent-bg border-dz-accent text-dz-accent' : 'bg-dz-bg border-dz-rule text-dz-text-2'}`}>
                           {getPath(editing, f.path) ? 'Oui / Yes' : 'Non / No'}
                         </button>
                       </div>
@@ -1904,7 +2241,7 @@ const AdminCrud = ({ entity, token, lang }) => {
                   </div>
                 )
               })}
-              <Button data-testid="admin-save-btn" className="w-full bg-emerald-800 hover:bg-emerald-900 text-white" disabled={saving} onClick={save}>
+              <Button data-testid="admin-save-btn" className="w-full bg-dz-accent hover:bg-dz-ink text-white" disabled={saving} onClick={save}>
                 {saving ? '...' : (lang === 'fr' ? 'Enregistrer' : 'Save')}
               </Button>
             </div>
@@ -1948,14 +2285,14 @@ const AdminView = ({ lang }) => {
   if (!token) {
     return (
       <div className="container mx-auto px-4 py-16 max-w-sm">
-        <Card className="border-stone-200">
+        <Card className="border-dz-rule">
           <CardContent className="p-6">
-            <h1 className="text-xl font-bold text-stone-900 mb-1" style={{ fontFamily: 'var(--font-playfair), serif' }}>Back-office</h1>
-            <p className="text-sm text-stone-500 mb-5">{lang === 'fr' ? 'Accès réservé à l’administration' : 'Admin access only'}</p>
+            <h1 className="text-xl font-display font-normal tracking-[-0.02em] text-dz-ink mb-1">Back-office</h1>
+            <p className="text-sm text-dz-text-2 mb-5">{lang === 'fr' ? 'Accès réservé à l’administration' : 'Admin access only'}</p>
             <form onSubmit={login} className="space-y-3">
               <Input data-testid="admin-password" type="password" placeholder={lang === 'fr' ? 'Mot de passe' : 'Password'} value={password} onChange={(e) => setPassword(e.target.value)} />
               {error && <p className="text-sm text-red-600" data-testid="admin-login-error">{error}</p>}
-              <Button data-testid="admin-login-btn" type="submit" className="w-full bg-stone-900 hover:bg-stone-800 text-white">{lang === 'fr' ? 'Connexion' : 'Log in'}</Button>
+              <Button data-testid="admin-login-btn" type="submit" className="w-full bg-dz-ink hover:bg-dz-accent text-white">{lang === 'fr' ? 'Connexion' : 'Log in'}</Button>
             </form>
           </CardContent>
         </Card>
@@ -1966,8 +2303,8 @@ const AdminView = ({ lang }) => {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>Back-office</h1>
-        <Button data-testid="admin-logout" variant="outline" size="sm" className="border-stone-300" onClick={logout}>
+        <h1 className="text-2xl md:text-3xl font-display font-normal tracking-[-0.02em] text-dz-ink">Back-office</h1>
+        <Button data-testid="admin-logout" variant="outline" size="sm" className="border-dz-chip" onClick={logout}>
           <LogOut className="h-3.5 w-3.5 mr-1.5" /> {lang === 'fr' ? 'Déconnexion' : 'Log out'}
         </Button>
       </div>
@@ -1983,9 +2320,9 @@ const AdminView = ({ lang }) => {
             { k: 'subscribers', fr: 'Abonnés', en: 'Subscribers' },
             { k: 'affiliate_clicks', fr: 'Clics achat', en: 'Buy clicks' },
           ].map((s) => (
-            <Card key={s.k} className="border-stone-200"><CardContent className="p-4">
-              <p className="text-2xl font-bold text-stone-900" data-testid={`stat-${s.k}`}>{stats[s.k]}</p>
-              <p className="text-xs text-stone-500">{s[lang]}</p>
+            <Card key={s.k} className="border-dz-rule"><CardContent className="p-4">
+              <p className="text-2xl font-semibold text-dz-ink" data-testid={`stat-${s.k}`}>{stats[s.k]}</p>
+              <p className="text-xs text-dz-text-2">{s[lang]}</p>
             </CardContent></Card>
           ))}
         </div>
@@ -2006,23 +2343,23 @@ const AdminView = ({ lang }) => {
         <TabsContent value="articles" className="mt-4"><AdminCrud entity="articles" token={token} lang={lang} /></TabsContent>
         <TabsContent value="hubs" className="mt-4"><AdminCrud entity="hubs" token={token} lang={lang} /></TabsContent>
         <TabsContent value="leads" className="mt-4">
-          <div className="border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-100">
-            {leads.length === 0 && <p className="p-4 text-sm text-stone-400">{lang === 'fr' ? 'Aucun lead pour le moment.' : 'No leads yet.'}</p>}
+          <div className="border border-dz-rule rounded-lg overflow-hidden divide-y divide-dz-rule-card">
+            {leads.length === 0 && <p className="p-4 text-sm text-dz-text-4">{lang === 'fr' ? 'Aucun lead pour le moment.' : 'No leads yet.'}</p>}
             {leads.map((l) => (
               <div key={l.id} className="px-4 py-3 bg-white" data-testid={`lead-row-${l.id}`}>
                 <div className="flex justify-between items-start">
-                  <p className="text-sm font-semibold text-stone-900">{l.brand_name} <span className="font-normal text-stone-400">— {l.contact_name}</span></p>
-                  <span className="text-[11px] text-stone-400">{(l.created_at || '').slice(0, 10)}</span>
+                  <p className="text-sm font-semibold text-dz-ink">{l.brand_name} <span className="font-normal text-dz-text-4">— {l.contact_name}</span></p>
+                  <span className="text-[11px] text-dz-text-4">{(l.created_at || '').slice(0, 10)}</span>
                 </div>
-                <p className="text-xs text-emerald-800">{l.email}</p>
-                {l.message && <p className="text-sm text-stone-600 mt-1">{l.message}</p>}
+                <p className="text-xs text-dz-accent">{l.email}</p>
+                {l.message && <p className="text-sm text-dz-text mt-1">{l.message}</p>}
               </div>
             ))}
           </div>
         </TabsContent>
         <TabsContent value="subscribers" className="mt-4">
           <div className="flex justify-end mb-3">
-            <Button data-testid="subscribers-export" variant="outline" size="sm" className="border-stone-300" disabled={subscribers.length === 0}
+            <Button data-testid="subscribers-export" variant="outline" size="sm" className="border-dz-chip" disabled={subscribers.length === 0}
               onClick={() => {
                 const rows = [['email', 'lang', 'source', 'created_at'], ...subscribers.map((s) => [s.email, s.lang, s.source, s.created_at])]
                 const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -2032,15 +2369,15 @@ const AdminView = ({ lang }) => {
               {lang === 'fr' ? 'Exporter CSV' : 'Export CSV'}
             </Button>
           </div>
-          <div className="border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-100">
-            {subscribers.length === 0 && <p className="p-4 text-sm text-stone-400">{lang === 'fr' ? 'Aucun abonné pour le moment.' : 'No subscribers yet.'}</p>}
+          <div className="border border-dz-rule rounded-lg overflow-hidden divide-y divide-dz-rule-card">
+            {subscribers.length === 0 && <p className="p-4 text-sm text-dz-text-4">{lang === 'fr' ? 'Aucun abonné pour le moment.' : 'No subscribers yet.'}</p>}
             {subscribers.map((s) => (
               <div key={s.id} className="px-4 py-3 bg-white flex justify-between items-center" data-testid={`subscriber-row-${s.id}`}>
                 <div>
-                  <p className="text-sm font-semibold text-stone-900">{s.email}</p>
-                  <p className="text-[11px] text-stone-400">{lang === 'fr' ? 'Source' : 'Source'}: {s.source} · {s.lang?.toUpperCase()}</p>
+                  <p className="text-sm font-semibold text-dz-ink">{s.email}</p>
+                  <p className="text-[11px] text-dz-text-4">{lang === 'fr' ? 'Source' : 'Source'}: {s.source} · {s.lang?.toUpperCase()}</p>
                 </div>
-                <span className="text-[11px] text-stone-400">{(s.created_at || '').slice(0, 10)}</span>
+                <span className="text-[11px] text-dz-text-4">{(s.created_at || '').slice(0, 10)}</span>
               </div>
             ))}
           </div>
@@ -2051,42 +2388,71 @@ const AdminView = ({ lang }) => {
 }
 
 // ---------- Footer ----------
-const Footer = ({ lang, nav }) => (
-  <footer className="bg-stone-900 text-stone-400 mt-10">
-    <div className="container mx-auto px-4 py-10">
-      <div className="mb-8 pb-8 border-b border-stone-800 max-w-xl">
-        <NewsletterSignup lang={lang} source="footer" variant="footer" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-        <div className="col-span-2 md:col-span-1">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="h-7 w-7 rounded-full bg-emerald-700 flex items-center justify-center"><Droplets className="h-3.5 w-3.5 text-white" /></div>
-            <span className="font-bold text-white" style={{ fontFamily: 'var(--font-playfair), serif' }}>Dermalyze</span>
+// Handoff §10 : filet haut, grille 1.5fr 1fr 1fr 1fr, en-têtes de colonne en
+// mono, mention légale séparée par un second filet.
+const Footer = ({ lang, nav }) => {
+  const columns = [
+    {
+      title: lang === 'fr' ? 'Explorer' : 'Explore',
+      links: [
+        ['products', lang === 'fr' ? 'Produits' : 'Products'],
+        ['ingredients', lang === 'fr' ? 'Ingrédients' : 'Ingredients'],
+        ['brands', lang === 'fr' ? 'Marques' : 'Brands'],
+        ['german-brands', lang === 'fr' ? 'Marques allemandes' : 'German Brands'],
+      ],
+    },
+    {
+      title: lang === 'fr' ? 'Outils' : 'Tools',
+      links: [
+        ['finder', 'Product Finder'],
+        ['compare', lang === 'fr' ? 'Comparateur' : 'Compare'],
+        ['hubs', lang === 'fr' ? 'Conseils' : 'Advice'],
+        ['learn', 'Learn & Guides'],
+      ],
+    },
+    {
+      title: lang === 'fr' ? 'Professionnels' : 'Professionals',
+      links: [
+        ['for-brands', lang === 'fr' ? 'Pour les marques' : 'For Brands'],
+        ['admin', 'Back-office'],
+      ],
+    },
+  ]
+
+  return (
+    <footer className="mt-20 pt-16 shadow-dz-rule-t md:mt-[110px]">
+      <Container className="pb-10">
+        <div className="mb-14 max-w-xl">
+          <NewsletterSignup lang={lang} source="footer" variant="footer" />
+        </div>
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] lg:gap-[52px]">
+          <div>
+            <div className="mb-3.5 font-display text-[28px] leading-none tracking-[-0.01em]">Dermalyze</div>
+            <p className="m-0 max-w-[290px] text-[14px] font-light leading-[1.65] text-dz-text-2">
+              {lang === 'fr'
+                ? 'La skincare décryptée par la science. Indépendant, transparent, bilingue.'
+                : 'Skincare decoded by science. Independent, transparent, bilingual.'}
+            </p>
           </div>
-          <p className="text-xs leading-relaxed">{lang === 'fr' ? 'La skincare décryptée par la science. Indépendant, transparent, bilingue.' : 'Skincare decoded by science. Independent, transparent, bilingual.'}</p>
-        </div>
-        <div>
-          <p className="text-white text-sm font-semibold mb-3">{lang === 'fr' ? 'Explorer' : 'Explore'}</p>
-          {[['products', lang === 'fr' ? 'Produits' : 'Products'], ['ingredients', lang === 'fr' ? 'Ingrédients' : 'Ingredients'], ['brands', lang === 'fr' ? 'Marques' : 'Brands'], ['german-brands', lang === 'fr' ? 'Marques allemandes' : 'German Brands']].map(([v, l]) => (
-            <button key={v} onClick={() => nav(v)} className="block text-xs py-1 hover:text-white">{l}</button>
+          {columns.map((col) => (
+            <div key={col.title} className="flex flex-col gap-3">
+              <Mono className="mb-[5px] text-[10.5px] tracking-[0.16em] text-dz-text-4">{col.title}</Mono>
+              {col.links.map(([v, l]) => (
+                <button key={v} data-testid={v === 'admin' ? 'footer-admin-link' : `footer-${v}`} onClick={() => nav(v)}
+                  className="text-left text-[14px] text-dz-nav transition-colors duration-200 hover:text-dz-accent">
+                  {l}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
-        <div>
-          <p className="text-white text-sm font-semibold mb-3">{lang === 'fr' ? 'Outils' : 'Tools'}</p>
-          {[['finder', 'Product Finder'], ['compare', lang === 'fr' ? 'Comparateur' : 'Compare'], ['hubs', lang === 'fr' ? 'Conseils' : 'Advice'], ['learn', 'Learn & Guides']].map(([v, l]) => (
-            <button key={v} onClick={() => nav(v)} className="block text-xs py-1 hover:text-white">{l}</button>
-          ))}
-        </div>
-        <div>
-          <p className="text-white text-sm font-semibold mb-3">{lang === 'fr' ? 'Professionnels' : 'Professionals'}</p>
-          <button onClick={() => nav('for-brands')} className="block text-xs py-1 hover:text-white">{lang === 'fr' ? 'Pour les marques' : 'For Brands'}</button>
-          <button data-testid="footer-admin-link" onClick={() => nav('admin')} className="block text-xs py-1 hover:text-white">Back-office</button>
-        </div>
-      </div>
-      <p className="text-[11px] text-stone-600 mt-8 pt-6 border-t border-stone-800">© 2025 Dermalyze — {lang === 'fr' ? 'Les informations fournies ne remplacent pas un avis médical.' : 'Information provided does not replace medical advice.'}</p>
-    </div>
-  </footer>
-)
+      </Container>
+      <Container className="pb-12 pt-[22px] text-[12.5px] text-dz-text-4 shadow-dz-rule-legal">
+        © 2025 Dermalyze — {lang === 'fr' ? 'Les informations fournies ne remplacent pas un avis médical.' : 'Information provided does not replace medical advice.'}
+      </Container>
+    </footer>
+  )
+}
 
 // ---------- App ----------
 function App() {
@@ -2155,7 +2521,7 @@ function App() {
 
   const v = route.view
   return (
-    <div className="min-h-screen bg-white text-stone-900">
+    <div className="min-h-screen bg-dz-bg text-dz-ink">
       <Header lang={lang} setLang={setLang} nav={nav} route={route} />
       <main>
         {v === 'home' && <HomeView lang={lang} nav={nav} products={products} ingredients={ingredients} brands={brands} articles={articles} />}
