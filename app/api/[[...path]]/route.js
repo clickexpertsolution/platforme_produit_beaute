@@ -240,7 +240,7 @@ const SEED_REELS = [
   },
 ]
 
-const SEED_VERSION = 4
+const SEED_VERSION = 3
 
 async function seedIfEmpty(database) {
   const before = await database.collection('meta').findOneAndUpdate(
@@ -250,12 +250,21 @@ async function seedIfEmpty(database) {
   )
   if (before && before.version >= SEED_VERSION) return
   const now = new Date().toISOString()
-  await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs', 'reels'].map((c) => database.collection(c).deleteMany({})))
+  await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs'].map((c) => database.collection(c).deleteMany({})))
   await database.collection('brands').insertMany(ALL_BRANDS.map((b) => ({ ...b, id: uuidv4(), created_at: now })))
   await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, id: uuidv4(), created_at: now })))
   await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({ ...p, id: uuidv4(), created_at: now })))
   await database.collection('articles').insertMany(SEED_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
+}
+
+// Les reels sont seedés indépendamment du reste : ajouter une collection ne
+// doit pas forcer une remise à zéro complète du contenu, qui effacerait les
+// saisies du back-office.
+async function seedReelsIfEmpty(database) {
+  const count = await database.collection('reels').countDocuments()
+  if (count > 0) return
+  const now = new Date().toISOString()
   await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
 }
 
@@ -352,6 +361,7 @@ export async function GET(request, { params }) {
     const { path = [] } = await params
     const database = await getDb()
     await seedIfEmpty(database)
+    await seedReelsIfEmpty(database)
     const url = new URL(request.url)
     const q = Object.fromEntries(url.searchParams)
 
@@ -513,6 +523,7 @@ export async function POST(request, { params }) {
     const { path = [] } = await params
     const database = await getDb()
     await seedIfEmpty(database)
+    await seedReelsIfEmpty(database)
     const body = await request.json().catch(() => ({}))
 
     // ---- PRODUCT FINDER ----

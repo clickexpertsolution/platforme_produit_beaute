@@ -2788,7 +2788,7 @@ function App() {
     fetch('/api/ingredients').then((r) => r.json()).then((d) => setIngredients(d.ingredients || []))
     fetch('/api/brands').then((r) => r.json()).then((d) => setBrands(d.brands || []))
     fetch('/api/articles').then((r) => r.json()).then((d) => setArticles(d.articles || []))
-    fetch('/api/reels').then((r) => r.json()).then((d) => setReels(d.reels || []))
+    fetch('/api/reels').then((r) => r.json()).then((d) => setReels(d.reels || [])).catch(() => setReels([]))
   }, [])
 
   // Lightweight SEO: dynamic document title + meta description per route

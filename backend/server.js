@@ -168,6 +168,65 @@ const ALL_BRANDS = [...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] 
 const ALL_INGREDIENTS = [...SEED_INGREDIENTS, ...NEW_INGREDIENTS]
 const ALL_PRODUCTS = [...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS]
 
+
+// ============ REELS / SHORTS ============
+// Vidéos verticales courtes (format Shorts / Reels), embarquées depuis une
+// plateforme externe. `video_url` est l'URL d'origine collée au back-office ;
+// le provider et l'identifiant en sont dérivés côté client.
+//
+// ATTENTION — contenu de démonstration : toutes les entrées pointent vers
+// l'URL de référence fournie au cadrage. Chaque reel doit recevoir l'URL de
+// sa propre vidéo avant mise en production.
+const REEL_PLACEHOLDER_URL = 'https://youtube.com/shorts/I1nvw5Y0sBM'
+
+const SEED_REELS = [
+  {
+    slug: 'retinol-par-ou-commencer', video_url: REEL_PLACEHOLDER_URL, duration_s: 48,
+    vertical: 'skincare', ingredient_slug: 'retinol', published_at: '2025-06-18',
+    title: { fr: 'Rétinol : par où commencer', en: 'Retinol: where to start' },
+    caption: {
+      fr: "Une à deux applications par semaine, le soir, sur peau sèche. On augmente seulement quand la peau ne tiraille plus.",
+      en: 'Once or twice a week, at night, on dry skin. Increase only once your skin stops feeling tight.',
+    },
+  },
+  {
+    slug: 'lire-une-liste-inci', video_url: REEL_PLACEHOLDER_URL, duration_s: 55,
+    vertical: 'skincare', published_at: '2025-06-22',
+    title: { fr: 'Lire une liste INCI en 30 secondes', en: 'Read an INCI list in 30 seconds' },
+    caption: {
+      fr: "Les cinq premiers ingrédients représentent souvent plus de 80% de la formule. Le reste se joue sous la barre des 1%.",
+      en: 'The first five ingredients often make up over 80% of the formula. The rest plays out below the 1% mark.',
+    },
+  },
+  {
+    slug: 'ph-5-5-pourquoi', video_url: REEL_PLACEHOLDER_URL, duration_s: 41,
+    vertical: 'skincare', product_slug: 'sebamed-clear-face-gel', published_at: '2025-06-29',
+    title: { fr: 'Pourquoi le pH 5.5 change tout', en: 'Why pH 5.5 changes everything' },
+    caption: {
+      fr: "Le manteau acide de la peau tourne autour de 5.5. Un nettoyant trop alcalin le décape et fragilise la barrière.",
+      en: "The skin's acid mantle sits around 5.5. An overly alkaline cleanser strips it and weakens the barrier.",
+    },
+  },
+  {
+    slug: 'thiamidol-taches-pigmentaires', video_url: REEL_PLACEHOLDER_URL, duration_s: 52,
+    vertical: 'skincare', product_slug: 'nivea-luminous630-serum', published_at: '2025-07-04',
+    title: { fr: 'Taches pigmentaires : ce qui marche', en: 'Dark spots: what actually works' },
+    caption: {
+      fr: "Thiamidol et Luminous630 sortent de la recherche Beiersdorf. Comptez quatre semaines avant de juger un résultat.",
+      en: 'Thiamidol and Luminous630 come out of Beiersdorf research. Give it four weeks before judging results.',
+    },
+  },
+  {
+    slug: 'biotine-chute-de-cheveux', video_url: REEL_PLACEHOLDER_URL, duration_s: 46,
+    vertical: 'hair', ingredient_slug: 'biotine', published_at: '2025-07-11',
+    title: { fr: 'Biotine : utile ou marketing ?', en: 'Biotin: useful or marketing?' },
+    caption: {
+      fr: "La supplémentation n'a d'effet démontré qu'en cas de carence avérée. Sans déficit, le bénéfice reste théorique.",
+      en: 'Supplementation has proven effects only in cases of actual deficiency. Without one, the benefit stays theoretical.',
+    },
+  },
+]
+
 const SEED_VERSION = 3
 
 async function seedIfEmpty(database) {
@@ -186,6 +245,16 @@ async function seedIfEmpty(database) {
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
 }
 
+// Les reels sont seedés indépendamment du reste : ajouter une collection ne
+// doit pas forcer une remise à zéro complète du contenu, qui effacerait les
+// saisies du back-office.
+async function seedReelsIfEmpty(database) {
+  const count = await database.collection('reels').countDocuments()
+  if (count > 0) return
+  const now = new Date().toISOString()
+  await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
+}
+
 async function requireAdmin(req, database) {
   const auth = req.headers['authorization'] || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
@@ -193,7 +262,7 @@ async function requireAdmin(req, database) {
   return await database.collection('sessions').findOne({ token })
 }
 
-const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hubs']
+const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hubs', 'reels']
 
 // ============ INGREDIENT CONFLICT RULES ============
 const INGREDIENT_CONFLICTS = [
@@ -269,6 +338,7 @@ router.get('/*', async (req, res) => {
     const path = parsePath(req)
     const database = await getDb()
     await seedIfEmpty(database)
+    await seedReelsIfEmpty(database)
     const q = req.query
 
     if (path.length === 0 || path[0] === 'root') {
@@ -348,6 +418,21 @@ router.get('/*', async (req, res) => {
       return send(res, { articles, total: articles.length })
     }
 
+    if (path[0] === 'reels') {
+      if (path[1]) {
+        const reel = await database.collection('reels').findOne({ slug: path[1] }, NOID)
+        if (!reel) return send(res, { error: 'Reel not found' }, 404)
+        return send(res, reel)
+      }
+      const filter = {}
+      if (q.vertical) filter.vertical = q.vertical
+      if (q.product_slug) filter.product_slug = q.product_slug
+      if (q.ingredient_slug) filter.ingredient_slug = q.ingredient_slug
+      if (q.all !== '1') filter.status = { $ne: 'draft' }
+      const reels = await database.collection('reels').find(filter, NOID).sort({ published_at: -1 }).toArray()
+      return send(res, { reels, total: reels.length })
+    }
+
     if (path[0] === 'compare') {
       const a = await database.collection('products').findOne({ slug: q.a }, NOID)
       const b = await database.collection('products').findOne({ slug: q.b }, NOID)
@@ -404,6 +489,7 @@ router.post('/*', async (req, res) => {
     const path = parsePath(req)
     const database = await getDb()
     await seedIfEmpty(database)
+    await seedReelsIfEmpty(database)
     const body = req.body || {}
 
     if (path[0] === 'finder') {
