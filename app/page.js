@@ -19,7 +19,7 @@ import {
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
   BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail,
   Scissors, HeartPulse, Factory, BadgeCheck, HelpCircle, ShoppingBag, ListChecks,
-  Share2, Copy, Play, ChevronUp, ChevronDown, Trophy, Scale, Info, RefreshCw, ArrowLeftRight, Tag
+  Share2, Copy, Play, ChevronUp, ChevronDown, Trophy, Scale, Info, RefreshCw, ArrowLeftRight, Tag, Compass
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -3214,7 +3214,7 @@ const FinderFab = ({ lang, nav, route }) => {
       title={labelTxt}
       className="fixed bottom-6 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-dz-accent text-white shadow-dz-card-hover ring-1 ring-white/15 transition-[transform,background-color] duration-250 hover:-translate-y-0.5 hover:bg-dz-accent-hover active:translate-y-0 sm:hidden"
     >
-      <Sparkles className="h-6 w-6" />
+      <Compass className="h-6 w-6" />
     </button>
   )
 }
