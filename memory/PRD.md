@@ -32,6 +32,17 @@ Articles CMS déjà présents (admin), ajouter : génération assistée IA (Emer
 Affiliate links management, Product Finder extended to hair/wellness, newsletter signup + admin export.
 - ✅ Partage de routine (Share Routine): POST /api/routines (snapshot routine+alternatives+profile → id court unique) + GET /api/routines/:id. Frontend: bouton "Partager ma routine" dans le Finder (lien #/routine/{id}, copie presse-papiers + partage natif), page SharedRoutineView en lecture seule (RoutineDisplay réutilisé, badges profil, CTA Finder). Backend testé 44/44.
 
+## Phase A — Conversion (DONE, backend tested 33/33)
+- Product Finder MULTI-UNIVERS: POST /api/finder retourne routine.sections[] génériques (skincare=morning+evening avec compat legacy morning/evening/warnings; hair=1 section shampoo>conditioner>hair-treatment>scalp-serum; wellness=1 section supplement>tea>bath-body). Nouveau paramètre avoid_ingredients[] (exclut produits contenant ces actifs). Frontend: FinderView machine à phases (univers → [peau] → préoccupations → budget → ingrédients à éviter → résultats).
+- Affiliation: produits ont affiliate_url; BuyButton "Où acheter" + POST /api/track (events) pour suivi des clics; stats admin affiliate_clicks.
+- Newsletter: POST /api/newsletter (dedupe, validation), GET /api/admin/subscribers, export CSV admin, composant NewsletterSignup (footer + fin de finder), stats subscribers.
+
+## Phase B — Authority (DONE backend, IA bloquée par budget clé)
+- Génération de contenu IA: POST /api/admin/generate (auth) via emergentintegrations LlmChat + EMERGENT_LLM_KEY (openai/gpt-4o-mini). Retourne article bilingue {slug,category,vertical,title,excerpt,content}. Admin: bouton "Générer avec l'IA" (onglet Articles) → ouvre le brouillon pré-rempli pour révision avant publication. NOTE: la Universal Key a son budget épuisé (max 0.001) — recharger via Profile→Manage plan→Universal Key→Add Balance pour utiliser la génération.
+- Articles: champ status (draft/published) — GET /api/articles public exclut les drafts, ?all=1 les inclut (liste admin). Filtre catégorie "how-to" ajouté dans Learn.
+- SEO léger: <title> + meta description dynamiques par route (client-side).
+- Reste à faire (Phase B): JSON-LD/sitemap, avis/preuves, ~15 articles démo, lien articles↔hubs.
+
 ### 🔜 Étape 4 — B2B Market Entry
 "For German brands" landing (localization, leads, distributors services), B2B lead form + admin lead management (basic leads already exist).
 

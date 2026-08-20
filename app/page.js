@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
+const DEFAULT_ARTICLE_IMG = 'https://images.unsplash.com/photo-1713768704571-6aeb0d0e5105?crop=entropy&cs=srgb&fm=jpg&q=85'
 
 const VERTICALS = [
   { id: 'skincare', fr: 'Soins de la peau', en: 'Skincare' },
@@ -527,9 +528,7 @@ const ProductDetailView = ({ slug, lang, nav, setCompareA }) => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 mt-7">
-            <Button data-testid="affiliate-btn" size="lg" className="bg-emerald-800 hover:bg-emerald-900 text-white flex-1" onClick={() => window.open(p.affiliate_url, '_blank')}>
-              <ExternalLink className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Voir le produit' : 'View product'}
-            </Button>
+            <BuyButton product={p} lang={lang} className="flex-1 h-11" />
             <Button data-testid="compare-btn" size="lg" variant="outline" className="border-stone-300 flex-1" onClick={() => { setCompareA(p.slug); nav('compare') }}>
               <GitCompare className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Comparer' : 'Compare'}
             </Button>
@@ -833,21 +832,46 @@ const ROUTINE_HINTS = {
   serum: { fr: 'Appliquez le sérum ciblé', en: 'Apply your targeted serum' },
   moisturizer: { fr: 'Hydratez et renforcez la barrière cutanée', en: 'Moisturize and support the skin barrier' },
   sunscreen: { fr: 'Terminez par la protection solaire', en: 'Finish with sun protection' },
+  shampoo: { fr: 'Lavez avec le shampoing adapté', en: 'Wash with the suitable shampoo' },
+  conditioner: { fr: "Appliquez l'après-shampoing sur les longueurs", en: 'Apply conditioner to the lengths' },
+  'hair-treatment': { fr: 'Appliquez le soin / masque capillaire', en: 'Apply the hair treatment / mask' },
+  'scalp-serum': { fr: 'Massez le sérum sur le cuir chevelu', en: 'Massage the serum into the scalp' },
+  supplement: { fr: 'Prenez le complément selon la posologie', en: 'Take the supplement as directed' },
+  tea: { fr: 'Infusez et dégustez', en: 'Steep and enjoy' },
+  'bath-body': { fr: 'Rituel bain & corps détente', en: 'Relaxing bath & body ritual' },
+}
+
+// icon + colors per section id
+const SECTION_STYLE = {
+  morning: { icon: <Sun className="h-5 w-5 text-amber-500" />, bg: 'bg-amber-50 border-amber-100' },
+  evening: { icon: <Moon className="h-5 w-5 text-indigo-500" />, bg: 'bg-indigo-50 border-indigo-100' },
+  routine: { icon: <Sparkles className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50 border-emerald-100' },
+}
+
+// Normalize routine into a sections[] array (supports legacy {morning, evening, warnings})
+const getRoutineSections = (routine) => {
+  if (!routine) return []
+  if (Array.isArray(routine.sections) && routine.sections.length) return routine.sections
+  const legacy = []
+  if (routine.morning?.length) legacy.push({ id: 'morning', title: { fr: 'Routine du matin', en: 'Morning routine' }, steps: routine.morning, warnings: routine.warnings?.morning || [] })
+  if (routine.evening?.length) legacy.push({ id: 'evening', title: { fr: 'Routine du soir', en: 'Evening routine' }, steps: routine.evening, warnings: routine.warnings?.evening || [] })
+  return legacy
 }
 
 const RoutineDisplay = ({ routine, alternatives = [], lang, nav }) => (
   <div>
-    {[
-      { key: 'morning', icon: <Sun className="h-5 w-5 text-amber-500" />, fr: 'Routine du matin', en: 'Morning routine', bg: 'bg-amber-50 border-amber-100' },
-      { key: 'evening', icon: <Moon className="h-5 w-5 text-indigo-500" />, fr: 'Routine du soir', en: 'Evening routine', bg: 'bg-indigo-50 border-indigo-100' },
-    ].map((section) => (
-      <div key={section.key} data-testid={`routine-${section.key}`} className={`rounded-2xl border ${section.bg} p-4 md:p-5 mb-5`}>
+    {getRoutineSections(routine).map((section) => {
+      const style = SECTION_STYLE[section.id] || SECTION_STYLE.routine
+      const steps = section.steps || []
+      const warnings = section.warnings || []
+      return (
+      <div key={section.id} data-testid={`routine-${section.id}`} className={`rounded-2xl border ${style.bg} p-4 md:p-5 mb-5`}>
         <p className="font-bold text-stone-900 flex items-center gap-2 mb-4">
-          {section.icon} {section[lang]}
+          {style.icon} {section.title?.[lang]}
         </p>
         <div className="space-y-2.5">
-          {(routine?.[section.key] || []).map((s) => (
-            <div key={`${section.key}-${s.order}`} data-testid={`routine-step-${section.key}-${s.category}`}
+          {steps.map((s) => (
+            <div key={`${section.id}-${s.order}`} data-testid={`routine-step-${section.id}-${s.category}`}
               className="flex gap-3 items-center bg-white rounded-xl border border-stone-200 p-3 cursor-pointer hover:shadow-md transition-all"
               onClick={() => nav('product', s.product.slug)}>
               <div className="flex flex-col items-center shrink-0">
@@ -869,8 +893,8 @@ const RoutineDisplay = ({ routine, alternatives = [], lang, nav }) => (
             </div>
           ))}
         </div>
-        {(routine?.warnings?.[section.key] || []).map((w, wi) => (
-          <div key={wi} data-testid={`routine-warning-${section.key}-${wi}`}
+        {warnings.map((w, wi) => (
+          <div key={wi} data-testid={`routine-warning-${section.id}-${wi}`}
             className={`mt-3 rounded-xl border p-3 flex gap-2.5 ${w.severity === 'high' ? 'bg-red-50 border-red-200' : w.severity === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
             <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${w.severity === 'high' ? 'text-red-600' : w.severity === 'medium' ? 'text-amber-600' : 'text-stone-500'}`} />
             <div>
@@ -885,18 +909,18 @@ const RoutineDisplay = ({ routine, alternatives = [], lang, nav }) => (
             </div>
           </div>
         ))}
-        {(routine?.warnings?.[section.key] || []).length === 0 && (
-          <p data-testid={`routine-noconflict-${section.key}`} className="mt-3 text-xs text-emerald-700 flex items-center gap-1.5">
+        {warnings.length === 0 && (
+          <p data-testid={`routine-noconflict-${section.id}`} className="mt-3 text-xs text-emerald-700 flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" /> {lang === 'fr' ? "Aucun conflit d'actifs détecté dans cette routine" : 'No active-ingredient conflicts detected in this routine'}
           </p>
         )}
         <p className="text-xs text-stone-500 mt-3 text-right">
           {lang === 'fr' ? 'Total' : 'Total'} : <span className="font-bold text-stone-800">
-            {(routine?.[section.key] || []).reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €
+            {steps.reduce((sum, s) => sum + (s.product.price_eur || 0), 0).toFixed(2)} €
           </span>
         </p>
       </div>
-    ))}
+    )})}
 
     {alternatives.length > 0 && (
       <div className="mt-7">
@@ -1049,25 +1073,103 @@ const SharedRoutineView = ({ id, lang, nav }) => {
   )
 }
 
+// Reusable newsletter signup
+const NewsletterSignup = ({ lang, source = 'site', variant = 'card' }) => {
+  const [email, setEmail] = useState('')
+  const [state, setState] = useState('idle') // idle | loading | done | error
+  const submit = async (e) => {
+    e?.preventDefault?.()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setState('error'); return }
+    setState('loading')
+    try {
+      const res = await fetch('/api/newsletter', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, lang, source }),
+      })
+      if (!res.ok) throw new Error('failed')
+      setState('done')
+    } catch { setState('error') }
+  }
+  const dark = variant === 'footer'
+  return (
+    <div data-testid="newsletter-signup" className={`${variant === 'card' ? 'mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4 md:p-5' : ''}`}>
+      <p className={`font-bold flex items-center gap-2 ${dark ? 'text-white' : 'text-stone-900'}`}>
+        <Mail className={`h-4 w-4 ${dark ? 'text-emerald-300' : 'text-emerald-700'}`} /> {lang === 'fr' ? 'Newsletter beauté & science' : 'Beauty & science newsletter'}
+      </p>
+      <p className={`text-sm mt-1 ${dark ? 'text-stone-300' : 'text-stone-600'}`}>
+        {lang === 'fr' ? 'Conseils fondés sur la science et nouvelles marques allemandes, une fois par mois.' : 'Science-based advice and new German brands, once a month.'}
+      </p>
+      {state === 'done' ? (
+        <p data-testid="newsletter-success" className={`mt-3 text-sm font-medium flex items-center gap-1.5 ${dark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+          <Check className="h-4 w-4" /> {lang === 'fr' ? 'Merci ! Vous êtes inscrit(e).' : "Thanks! You're subscribed."}
+        </p>
+      ) : (
+        <form onSubmit={submit} className="mt-3 flex flex-col sm:flex-row gap-2">
+          <Input data-testid="newsletter-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); if (state === 'error') setState('idle') }}
+            placeholder={lang === 'fr' ? 'Votre email' : 'Your email'} className={dark ? 'bg-white/10 border-white/20 text-white placeholder:text-stone-400' : 'bg-white'} />
+          <Button data-testid="newsletter-submit" type="submit" disabled={state === 'loading'} className="bg-emerald-800 hover:bg-emerald-900 text-white shrink-0">
+            {state === 'loading' ? (lang === 'fr' ? 'Envoi...' : 'Sending...') : (lang === 'fr' ? "S'inscrire" : 'Subscribe')}
+          </Button>
+        </form>
+      )}
+      {state === 'error' && <p className="text-xs text-red-500 mt-2">{lang === 'fr' ? 'Email invalide, réessayez.' : 'Invalid email, try again.'}</p>}
+    </div>
+  )
+}
+
+// Affiliate "Buy" button with click tracking
+const BuyButton = ({ product, lang, className = '' }) => {
+  if (!product?.affiliate_url) return null
+  const onClick = () => {
+    try {
+      fetch('/api/track', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'affiliate_click', product_slug: product.slug, vertical: product.vertical }),
+      })
+    } catch { /* non-blocking */ }
+    window.open(product.affiliate_url, '_blank', 'noopener,noreferrer')
+  }
+  return (
+    <Button data-testid={`buy-btn-${product.slug}`} onClick={onClick} className={`bg-emerald-800 hover:bg-emerald-900 text-white ${className}`}>
+      <ShoppingBag className="h-4 w-4 mr-2" /> {lang === 'fr' ? 'Où acheter' : 'Where to buy'}
+    </Button>
+  )
+}
+
+
 const FinderView = ({ lang, nav }) => {
-  const [step, setStep] = useState(0)
+  const [phase, setPhase] = useState('vertical')
+  const [vertical, setVertical] = useState('skincare')
   const [skinType, setSkinType] = useState(null)
   const [concerns, setConcerns] = useState([])
   const [budget, setBudget] = useState(null)
+  const [avoidIngredients, setAvoidIngredients] = useState([])
   const [results, setResults] = useState(null)
   const [routine, setRoutine] = useState(null)
   const [alternatives, setAlternatives] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const toggleConcern = (id) => setConcerns((cur) => cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id])
+  const AVOID_OPTIONS = [
+    { id: 'retinol', fr: 'Rétinol', en: 'Retinol' },
+    { id: 'acide-salicylique', fr: 'Acide salicylique', en: 'Salicylic acid' },
+    { id: 'vitamine-c', fr: 'Vitamine C', en: 'Vitamin C' },
+    { id: 'niacinamide', fr: 'Niacinamide', en: 'Niacinamide' },
+    { id: 'cafeine', fr: 'Caféine', en: 'Caffeine' },
+    { id: 'melatonine', fr: 'Mélatonine', en: 'Melatonin' },
+  ]
 
-  const submit = async (chosenBudget) => {
+  const toggleConcern = (id) => setConcerns((cur) => cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id])
+  const toggleAvoid = (id) => setAvoidIngredients((cur) => cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id])
+
+  const chooseVertical = (v) => { setVertical(v); setSkinType(null); setConcerns([]); setTimeout(() => setPhase(v === 'skincare' ? 'skin' : 'concerns'), 200) }
+
+  const submit = async (avoid = avoidIngredients) => {
     setLoading(true)
-    setStep(3)
+    setPhase('results')
     const res = await fetch('/api/finder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ skin_type: skinType, concerns, budget: chosenBudget, vertical: 'skincare' }),
+      body: JSON.stringify({ skin_type: skinType, concerns, budget, vertical, avoid_ingredients: avoid }),
     })
     const data = await res.json()
     setResults(data.results || [])
@@ -1076,8 +1178,17 @@ const FinderView = ({ lang, nav }) => {
     setLoading(false)
   }
 
-  const reset = () => { setStep(0); setSkinType(null); setConcerns([]); setBudget(null); setResults(null); setRoutine(null); setAlternatives([]) }
-  const progress = ((step + 1) / 4) * 100
+  const reset = () => { setPhase('vertical'); setVertical('skincare'); setSkinType(null); setConcerns([]); setBudget(null); setAvoidIngredients([]); setResults(null); setRoutine(null); setAlternatives([]) }
+
+  const order = vertical === 'skincare' ? ['vertical', 'skin', 'concerns', 'budget', 'avoid', 'results'] : ['vertical', 'concerns', 'budget', 'avoid', 'results']
+  const progress = ((order.indexOf(phase) + 1) / order.length) * 100
+  const goBack = () => { const i = order.indexOf(phase); if (i > 0) setPhase(order[i - 1]) }
+
+  const VERTICAL_ICONS = {
+    skincare: <Droplets className="h-5 w-5 text-emerald-700" />,
+    hair: <Scissors className="h-5 w-5 text-emerald-700" />,
+    wellness: <HeartPulse className="h-5 w-5 text-emerald-700" />,
+  }
 
   const OptionBtn = ({ active, onClick, children, testid }) => (
     <button data-testid={testid} onClick={onClick}
@@ -1094,64 +1205,98 @@ const FinderView = ({ lang, nav }) => {
         <h1 className="text-2xl md:text-4xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>
           {lang === 'fr' ? 'Trouvez vos produits idéaux' : 'Find your ideal products'}
         </h1>
-        <p className="text-stone-500 mt-2 text-sm md:text-base">{lang === 'fr' ? '3 questions, 30 secondes, des recommandations personnalisées.' : '3 questions, 30 seconds, personalized recommendations.'}</p>
+        <p className="text-stone-500 mt-2 text-sm md:text-base">{lang === 'fr' ? 'Quelques questions, une routine personnalisée pour votre univers.' : 'A few questions, a personalized routine for your universe.'}</p>
       </div>
       <div className="h-1.5 bg-stone-100 rounded-full mb-8 overflow-hidden">
         <div className="h-full bg-emerald-700 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
       </div>
 
-      {step === 0 && (
+      {phase === 'vertical' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? '1. Quel est votre type de peau ?' : '1. What is your skin type?'}</p>
+          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? 'Quel univers vous intéresse ?' : 'Which universe are you interested in?'}</p>
           <div className="grid gap-2.5">
-            {SKIN_TYPES.map((s) => (
-              <OptionBtn key={s.id} testid={`finder-skin-${s.id}`} active={skinType === s.id} onClick={() => { setSkinType(s.id); setTimeout(() => setStep(1), 250) }}>
-                {s[lang]}
+            {VERTICALS.map((v) => (
+              <OptionBtn key={v.id} testid={`finder-vertical-${v.id}`} active={vertical === v.id} onClick={() => chooseVertical(v.id)}>
+                <span className="flex items-center gap-2.5">{VERTICAL_ICONS[v.id]} {v[lang]}</span>
               </OptionBtn>
             ))}
           </div>
         </div>
       )}
 
-      {step === 1 && (
+      {phase === 'skin' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-1 text-lg">{lang === 'fr' ? '2. Quelles sont vos préoccupations ?' : '2. What are your concerns?'}</p>
+          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? 'Quel est votre type de peau ?' : 'What is your skin type?'}</p>
+          <div className="grid gap-2.5">
+            {SKIN_TYPES.map((s) => (
+              <OptionBtn key={s.id} testid={`finder-skin-${s.id}`} active={skinType === s.id} onClick={() => { setSkinType(s.id); setTimeout(() => setPhase('concerns'), 250) }}>
+                {s[lang]}
+              </OptionBtn>
+            ))}
+          </div>
+          <Button variant="outline" className="border-stone-300 mt-6" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+        </div>
+      )}
+
+      {phase === 'concerns' && (
+        <div>
+          <p className="font-semibold text-stone-900 mb-1 text-lg">{lang === 'fr' ? 'Quelles sont vos préoccupations ?' : 'What are your concerns?'}</p>
           <p className="text-sm text-stone-400 mb-4">{lang === 'fr' ? 'Plusieurs choix possibles' : 'Multiple choices allowed'}</p>
           <div className="grid gap-2.5">
-            {CONCERNS.filter((c) => c.vertical === 'skincare').map((c) => (
+            {CONCERNS.filter((c) => c.vertical === vertical).map((c) => (
               <OptionBtn key={c.id} testid={`finder-concern-${c.id}`} active={concerns.includes(c.id)} onClick={() => toggleConcern(c.id)}>
                 {c[lang]}
               </OptionBtn>
             ))}
           </div>
           <div className="flex gap-3 mt-6">
-            <Button variant="outline" className="border-stone-300" onClick={() => setStep(0)}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
-            <Button data-testid="finder-next-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white flex-1" disabled={concerns.length === 0} onClick={() => setStep(2)}>
+            <Button variant="outline" className="border-stone-300" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+            <Button data-testid="finder-next-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white flex-1" disabled={concerns.length === 0} onClick={() => setPhase('budget')}>
               {lang === 'fr' ? 'Continuer' : 'Continue'} <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
         </div>
       )}
 
-      {step === 2 && (
+      {phase === 'budget' && (
         <div>
-          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? '3. Quel est votre budget par produit ?' : '3. What is your budget per product?'}</p>
+          <p className="font-semibold text-stone-900 mb-4 text-lg">{lang === 'fr' ? 'Quel est votre budget par produit ?' : 'What is your budget per product?'}</p>
           <div className="grid gap-2.5">
             {[
               { id: 'low', fr: 'Économique — moins de 15 €', en: 'Budget — under €15' },
               { id: 'mid', fr: 'Modéré — jusqu’à 25 €', en: 'Moderate — up to €25' },
               { id: 'high', fr: 'Premium — peu importe le prix', en: 'Premium — price no object' },
             ].map((b) => (
-              <OptionBtn key={b.id} testid={`finder-budget-${b.id}`} active={budget === b.id} onClick={() => { setBudget(b.id); submit(b.id) }}>
+              <OptionBtn key={b.id} testid={`finder-budget-${b.id}`} active={budget === b.id} onClick={() => { setBudget(b.id); setPhase('avoid') }}>
                 {b[lang]}
               </OptionBtn>
             ))}
           </div>
-          <Button variant="outline" className="border-stone-300 mt-6" onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+          <Button variant="outline" className="border-stone-300 mt-6" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
         </div>
       )}
 
-      {step === 3 && (
+      {phase === 'avoid' && (
+        <div>
+          <p className="font-semibold text-stone-900 mb-1 text-lg">{lang === 'fr' ? 'Des ingrédients à éviter ?' : 'Any ingredients to avoid?'}</p>
+          <p className="text-sm text-stone-400 mb-4">{lang === 'fr' ? "Optionnel — nous exclurons les produits qui en contiennent" : 'Optional — we will exclude products containing them'}</p>
+          <div className="grid gap-2.5">
+            {AVOID_OPTIONS.map((a) => (
+              <OptionBtn key={a.id} testid={`finder-avoid-${a.id}`} active={avoidIngredients.includes(a.id)} onClick={() => toggleAvoid(a.id)}>
+                {a[lang]}
+              </OptionBtn>
+            ))}
+          </div>
+          <div className="flex gap-3 mt-6">
+            <Button variant="outline" className="border-stone-300" onClick={goBack}><ArrowLeft className="h-4 w-4 mr-1" />{lang === 'fr' ? 'Retour' : 'Back'}</Button>
+            <Button data-testid="finder-submit-btn" className="bg-emerald-800 hover:bg-emerald-900 text-white flex-1" onClick={() => submit()}>
+              {avoidIngredients.length > 0 ? (lang === 'fr' ? 'Voir ma routine' : 'See my routine') : (lang === 'fr' ? 'Passer — voir ma routine' : 'Skip — see my routine')} <ArrowRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'results' && (
         <div>
           {loading ? (
             <p className="text-center text-stone-400 py-14">{lang === 'fr' ? 'Construction de votre routine...' : 'Building your routine...'}</p>
@@ -1161,12 +1306,14 @@ const FinderView = ({ lang, nav }) => {
                 {lang === 'fr' ? 'Votre routine personnalisée' : 'Your personalized routine'}
               </p>
               <p className="text-sm text-stone-400 text-center mb-6">
-                {lang === 'fr' ? 'Étape par étape, matin et soir, adaptée à votre profil.' : 'Step by step, morning and evening, tailored to your profile.'}
+                {lang === 'fr' ? 'Étape par étape, adaptée à votre profil.' : 'Step by step, tailored to your profile.'}
               </p>
 
               <RoutineDisplay routine={routine} alternatives={alternatives} lang={lang} nav={nav} />
 
-              <ShareRoutine routine={routine} alternatives={alternatives} profile={{ skin_type: skinType, concerns, budget }} lang={lang} />
+              <ShareRoutine routine={routine} alternatives={alternatives} profile={{ vertical, skin_type: skinType, concerns, budget, avoid_ingredients: avoidIngredients }} lang={lang} />
+
+              <NewsletterSignup lang={lang} source="finder" />
 
               <Button data-testid="finder-restart" variant="outline" className="border-stone-300 mt-6 w-full" onClick={reset}>
                 {lang === 'fr' ? 'Recommencer le quiz' : 'Restart the quiz'}
@@ -1356,6 +1503,7 @@ const LearnView = ({ lang, nav, articles }) => {
     { id: 'learn', fr: 'Learn', en: 'Learn' },
     { id: 'guide', fr: 'Guides', en: 'Guides' },
     { id: 'research', fr: 'Research', en: 'Research' },
+    { id: 'how-to', fr: 'How-to', en: 'How-to' },
   ]
   return (
     <div className="container mx-auto px-4 py-8">
@@ -1549,7 +1697,9 @@ const ADMIN_FIELDS = {
   ],
   articles: [
     { path: 'slug', label: 'Slug', type: 'text' },
-    { path: 'category', label: 'Catégorie (learn/guide/research)', type: 'text' },
+    { path: 'category', label: 'Catégorie (learn/guide/research/how-to)', type: 'text' },
+    { path: 'status', label: 'Statut (draft/published)', type: 'text' },
+    { path: 'vertical', label: 'Univers (skincare/hair/wellness) — optionnel', type: 'text' },
     { path: 'image', label: 'Image URL', type: 'text' },
     { path: 'published_at', label: 'Date (YYYY-MM-DD)', type: 'text' },
     { path: 'title.fr', label: 'Titre FR', type: 'text' },
@@ -1583,9 +1733,34 @@ const AdminCrud = ({ entity, token, lang }) => {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const fields = ADMIN_FIELDS[entity]
+  const [genOpen, setGenOpen] = useState(false)
+  const [genTopic, setGenTopic] = useState('')
+  const [genVertical, setGenVertical] = useState('skincare')
+  const [genCategory, setGenCategory] = useState('guide')
+  const [genBusy, setGenBusy] = useState(false)
+  const [genError, setGenError] = useState('')
+
+  const generate = async () => {
+    setGenBusy(true); setGenError('')
+    try {
+      const res = await fetch('/api/admin/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ topic: genTopic, vertical: genVertical, category: genCategory }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || 'Generation failed')
+      const a = d.article
+      setEditing({
+        slug: a.slug, category: a.category, vertical: a.vertical || genVertical,
+        title: a.title, excerpt: a.excerpt, content: a.content,
+        image: DEFAULT_ARTICLE_IMG, published_at: new Date().toISOString().slice(0, 10), status: 'draft',
+      })
+      setGenOpen(false); setGenBusy(false); setOpen(true)
+    } catch (e) { setGenError(e.message); setGenBusy(false) }
+  }
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/${entity}`)
+    const res = await fetch(`/api/${entity}${entity === 'articles' ? '?all=1' : ''}`)
     const data = await res.json()
     setItems(data[entity] || [])
   }, [entity])
@@ -1621,10 +1796,59 @@ const AdminCrud = ({ entity, token, lang }) => {
     <div>
       <div className="flex justify-between items-center mb-4">
         <p className="text-sm text-stone-500">{items.length} {lang === 'fr' ? 'éléments' : 'items'}</p>
-        <Button data-testid={`admin-add-${entity}`} size="sm" className="bg-emerald-800 hover:bg-emerald-900 text-white" onClick={startNew}>
-          <Plus className="h-4 w-4 mr-1" /> {lang === 'fr' ? 'Ajouter' : 'Add'}
-        </Button>
+        <div className="flex gap-2">
+          {entity === 'articles' && (
+            <Button data-testid="admin-ai-generate" size="sm" variant="outline" className="border-emerald-300 text-emerald-800" onClick={() => { setGenError(''); setGenOpen(true) }}>
+              <Sparkles className="h-4 w-4 mr-1" /> {lang === 'fr' ? 'Générer avec l\u2019IA' : 'Generate with AI'}
+            </Button>
+          )}
+          <Button data-testid={`admin-add-${entity}`} size="sm" className="bg-emerald-800 hover:bg-emerald-900 text-white" onClick={startNew}>
+            <Plus className="h-4 w-4 mr-1" /> {lang === 'fr' ? 'Ajouter' : 'Add'}
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={genOpen} onOpenChange={setGenOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-700" /> {lang === 'fr' ? 'Générer un article (IA)' : 'Generate an article (AI)'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-stone-600">{lang === 'fr' ? 'Sujet de l\u2019article' : 'Article topic'}</Label>
+              <Textarea data-testid="ai-topic" value={genTopic} onChange={(e) => setGenTopic(e.target.value)} rows={2} className="mt-1"
+                placeholder={lang === 'fr' ? 'Ex : Comment utiliser la niacinamide' : 'e.g. How to use niacinamide'} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-stone-600">{lang === 'fr' ? 'Univers' : 'Universe'}</Label>
+                <Select value={genVertical} onValueChange={setGenVertical}>
+                  <SelectTrigger data-testid="ai-vertical" className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{VERTICALS.map((v) => <SelectItem key={v.id} value={v.id}>{v[lang]}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-stone-600">{lang === 'fr' ? 'Catégorie' : 'Category'}</Label>
+                <Select value={genCategory} onValueChange={setGenCategory}>
+                  <SelectTrigger data-testid="ai-category" className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="guide">Guide</SelectItem>
+                    <SelectItem value="research">Research</SelectItem>
+                    <SelectItem value="learn">Learn</SelectItem>
+                    <SelectItem value="how-to">How-to</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {genError && <p className="text-xs text-red-600">{genError}</p>}
+            <Button data-testid="ai-generate-btn" className="w-full bg-emerald-800 hover:bg-emerald-900 text-white" disabled={genBusy || genTopic.trim().length < 3} onClick={generate}>
+              {genBusy ? (lang === 'fr' ? 'Génération en cours\u2026 (10-20s)' : 'Generating\u2026 (10-20s)') : (lang === 'fr' ? 'Générer' : 'Generate')}
+            </Button>
+            <p className="text-[11px] text-stone-400">{lang === 'fr' ? 'Le contenu généré s\u2019ouvrira en brouillon pour révision avant publication.' : 'Generated content opens as a draft for review before publishing.'}</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-100">
         {items.map((item) => (
           <div key={item.id || item.slug} data-testid={`admin-row-${item.slug}`} className="flex items-center justify-between px-4 py-2.5 bg-white hover:bg-stone-50">
@@ -1697,6 +1921,7 @@ const AdminView = ({ lang }) => {
   const [error, setError] = useState('')
   const [stats, setStats] = useState(null)
   const [leads, setLeads] = useState([])
+  const [subscribers, setSubscribers] = useState([])
 
   useEffect(() => { setToken(localStorage.getItem('admin_token')) }, [])
   useEffect(() => {
@@ -1706,6 +1931,7 @@ const AdminView = ({ lang }) => {
       return r.json()
     }).then((d) => d && setStats(d))
     fetch('/api/admin/leads', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((d) => setLeads(d.leads || []))
+    fetch('/api/admin/subscribers', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((d) => setSubscribers(d.subscribers || []))
   }, [token])
 
   const login = async (e) => {
@@ -1746,7 +1972,7 @@ const AdminView = ({ lang }) => {
         </Button>
       </div>
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-7">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7">
           {[
             { k: 'products', fr: 'Produits', en: 'Products' },
             { k: 'brands', fr: 'Marques', en: 'Brands' },
@@ -1754,6 +1980,8 @@ const AdminView = ({ lang }) => {
             { k: 'articles', fr: 'Articles', en: 'Articles' },
             { k: 'hubs', fr: 'Hubs', en: 'Hubs' },
             { k: 'leads', fr: 'Leads', en: 'Leads' },
+            { k: 'subscribers', fr: 'Abonnés', en: 'Subscribers' },
+            { k: 'affiliate_clicks', fr: 'Clics achat', en: 'Buy clicks' },
           ].map((s) => (
             <Card key={s.k} className="border-stone-200"><CardContent className="p-4">
               <p className="text-2xl font-bold text-stone-900" data-testid={`stat-${s.k}`}>{stats[s.k]}</p>
@@ -1770,6 +1998,7 @@ const AdminView = ({ lang }) => {
           <TabsTrigger data-testid="admin-tab-articles" value="articles">Articles</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-hubs" value="hubs">Hubs</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-leads" value="leads">Leads</TabsTrigger>
+          <TabsTrigger data-testid="admin-tab-subscribers" value="subscribers">{lang === 'fr' ? 'Abonnés' : 'Subscribers'}</TabsTrigger>
         </TabsList>
         <TabsContent value="products" className="mt-4"><AdminCrud entity="products" token={token} lang={lang} /></TabsContent>
         <TabsContent value="brands" className="mt-4"><AdminCrud entity="brands" token={token} lang={lang} /></TabsContent>
@@ -1791,6 +2020,31 @@ const AdminView = ({ lang }) => {
             ))}
           </div>
         </TabsContent>
+        <TabsContent value="subscribers" className="mt-4">
+          <div className="flex justify-end mb-3">
+            <Button data-testid="subscribers-export" variant="outline" size="sm" className="border-stone-300" disabled={subscribers.length === 0}
+              onClick={() => {
+                const rows = [['email', 'lang', 'source', 'created_at'], ...subscribers.map((s) => [s.email, s.lang, s.source, s.created_at])]
+                const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+                const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+                const a = document.createElement('a'); a.href = url; a.download = 'subscribers.csv'; a.click(); URL.revokeObjectURL(url)
+              }}>
+              {lang === 'fr' ? 'Exporter CSV' : 'Export CSV'}
+            </Button>
+          </div>
+          <div className="border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-100">
+            {subscribers.length === 0 && <p className="p-4 text-sm text-stone-400">{lang === 'fr' ? 'Aucun abonné pour le moment.' : 'No subscribers yet.'}</p>}
+            {subscribers.map((s) => (
+              <div key={s.id} className="px-4 py-3 bg-white flex justify-between items-center" data-testid={`subscriber-row-${s.id}`}>
+                <div>
+                  <p className="text-sm font-semibold text-stone-900">{s.email}</p>
+                  <p className="text-[11px] text-stone-400">{lang === 'fr' ? 'Source' : 'Source'}: {s.source} · {s.lang?.toUpperCase()}</p>
+                </div>
+                <span className="text-[11px] text-stone-400">{(s.created_at || '').slice(0, 10)}</span>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
       </Tabs>
     </div>
   )
@@ -1800,6 +2054,9 @@ const AdminView = ({ lang }) => {
 const Footer = ({ lang, nav }) => (
   <footer className="bg-stone-900 text-stone-400 mt-10">
     <div className="container mx-auto px-4 py-10">
+      <div className="mb-8 pb-8 border-b border-stone-800 max-w-xl">
+        <NewsletterSignup lang={lang} source="footer" variant="footer" />
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
         <div className="col-span-2 md:col-span-1">
           <div className="flex items-center gap-2 mb-3">
@@ -1861,6 +2118,33 @@ function App() {
     fetch('/api/brands').then((r) => r.json()).then((d) => setBrands(d.brands || []))
     fetch('/api/articles').then((r) => r.json()).then((d) => setArticles(d.articles || []))
   }, [])
+
+  // Lightweight SEO: dynamic document title + meta description per route
+  useEffect(() => {
+    const titles = {
+      home: { fr: 'Dermalyze — La beauté & le bien-être allemands décryptés par la science', en: 'Dermalyze — German beauty & wellness decoded by science' },
+      products: { fr: 'Produits — Dermalyze', en: 'Products — Dermalyze' },
+      ingredients: { fr: 'Ingrédients décryptés — Dermalyze', en: 'Ingredients decoded — Dermalyze' },
+      brands: { fr: 'Marques — Dermalyze', en: 'Brands — Dermalyze' },
+      'german-brands': { fr: 'Marques allemandes — Dermalyze', en: 'German brands — Dermalyze' },
+      compare: { fr: 'Comparateur — Dermalyze', en: 'Compare — Dermalyze' },
+      finder: { fr: 'Product Finder — Dermalyze', en: 'Product Finder — Dermalyze' },
+      hubs: { fr: 'Conseils par préoccupation — Dermalyze', en: 'Advice by concern — Dermalyze' },
+      learn: { fr: 'Learn & Guides — Dermalyze', en: 'Learn & Guides — Dermalyze' },
+      'for-brands': { fr: 'Pour les marques — Entrer sur le marché MENA — Dermalyze', en: 'For brands — Enter the MENA market — Dermalyze' },
+      routine: { fr: 'Routine partagée — Dermalyze', en: 'Shared routine — Dermalyze' },
+    }
+    const t = (titles[route.view] || titles.home)[lang]
+    if (typeof document !== 'undefined') {
+      document.title = t
+      const desc = lang === 'fr'
+        ? 'Analysez les ingrédients, comparez les produits et trouvez votre routine — un focus unique sur les marques allemandes de santé & beauté.'
+        : 'Analyze ingredients, compare products and find your routine — a unique focus on German health & beauty brands.'
+      let m = document.querySelector('meta[name="description"]')
+      if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'description'); document.head.appendChild(m) }
+      m.setAttribute('content', desc)
+    }
+  }, [route.view, lang])
 
   const nav = useCallback((view, param = null, extra = null) => {
     setRoute({ view, param, extra })

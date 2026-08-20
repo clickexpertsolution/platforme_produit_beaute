@@ -1,7 +1,10 @@
 import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
+import { LlmChat, UserMessage } from 'emergentintegrations'
 import { SEED_HUBS } from '@/lib/seed-hubs'
+
+export const runtime = 'nodejs'
 
 let client = null
 let db = null
@@ -350,6 +353,7 @@ export async function GET(request, { params }) {
       }
       const filter = {}
       if (q.category) filter.category = q.category
+      if (q.all !== '1') filter.status = { $ne: 'draft' }
       const articles = await database.collection('articles').find(filter, NOID).sort({ published_at: -1 }).toArray()
       return json({ articles, total: articles.length })
     }
@@ -380,16 +384,22 @@ export async function GET(request, { params }) {
         const leads = await database.collection('leads').find({}, NOID).sort({ created_at: -1 }).toArray()
         return json({ leads, total: leads.length })
       }
+      if (path[1] === 'subscribers') {
+        const subscribers = await database.collection('subscribers').find({}, NOID).sort({ created_at: -1 }).toArray()
+        return json({ subscribers, total: subscribers.length })
+      }
       if (path[1] === 'stats') {
-        const [products, brands, ingredients, articles, leads, hubs] = await Promise.all([
+        const [products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks] = await Promise.all([
           database.collection('products').countDocuments(),
           database.collection('brands').countDocuments(),
           database.collection('ingredients').countDocuments(),
           database.collection('articles').countDocuments(),
           database.collection('leads').countDocuments(),
           database.collection('hubs').countDocuments(),
+          database.collection('subscribers').countDocuments(),
+          database.collection('events').countDocuments({ type: 'affiliate_click' }),
         ])
-        return json({ products, brands, ingredients, articles, leads, hubs })
+        return json({ products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks })
       }
       return json({ error: 'Not found' }, 404)
     }
@@ -411,11 +421,15 @@ export async function POST(request, { params }) {
 
     // ---- PRODUCT FINDER ----
     if (path[0] === 'finder') {
-      const { skin_type, concerns = [], budget = 'high', category, vertical } = body
+      const { skin_type, concerns = [], budget = 'high', category, vertical = 'skincare', avoid_ingredients = [] } = body
       const filter = {}
       if (vertical) filter.vertical = vertical
       if (category) filter.category = category
-      const products = await database.collection('products').find(filter, NOID).toArray()
+      let products = await database.collection('products').find(filter, NOID).toArray()
+      // Exclude products containing any ingredient the user wants to avoid
+      if (Array.isArray(avoid_ingredients) && avoid_ingredients.length) {
+        products = products.filter((p) => !(p.ingredients || []).some((i) => avoid_ingredients.includes(i)))
+      }
       const budgetMax = budget === 'low' ? 15 : budget === 'mid' ? 25 : Infinity
       const maxScore = 30 + concerns.length * 25 + 10 + 20
       const scoredAll = products
@@ -443,36 +457,68 @@ export async function POST(request, { params }) {
         })
         .sort((x, y) => y.score - x.score)
 
-      // Build step-by-step morning/evening routine (best product per category)
+      // Build vertical-aware step-by-step routine (best product per category)
       const bestOf = (cat, excludeSlugs = []) => scoredAll.find((p) => p.category === cat && !excludeSlugs.includes(p.slug)) || null
-      const cleanser = bestOf('cleanser')
-      const serumAM = bestOf('serum')
-      const moisturizer = bestOf('moisturizer')
-      const sunscreen = bestOf('sunscreen')
-      const serumPM = bestOf('serum', serumAM ? [serumAM.slug] : []) || serumAM
-      const morning = [
-        cleanser && { order: 1, category: 'cleanser', product: cleanser },
-        serumAM && { order: 2, category: 'serum', product: serumAM },
-        moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
-        sunscreen && { order: 4, category: 'sunscreen', product: sunscreen },
-      ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
-      const evening = [
-        cleanser && { order: 1, category: 'cleanser', product: cleanser },
-        serumPM && { order: 2, category: 'serum', product: serumPM },
-        moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
-      ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
+      const buildSteps = (cats) => cats
+        .map((cat) => bestOf(cat))
+        .filter(Boolean)
+        .map((p, idx) => ({ order: idx + 1, category: p.category, product: p }))
 
-      const routineSlugs = new Set([...morning, ...evening].map((s) => s.product.slug))
+      let sections = []
+      if (vertical === 'hair') {
+        const steps = buildSteps(['shampoo', 'conditioner', 'hair-treatment', 'scalp-serum'])
+        sections = [{ id: 'routine', title: { fr: 'Votre routine capillaire', en: 'Your hair routine' }, icon: 'hair', steps, warnings: detectConflicts(steps) }]
+      } else if (vertical === 'wellness') {
+        const steps = buildSteps(['supplement', 'tea', 'bath-body'])
+        sections = [{ id: 'routine', title: { fr: 'Votre programme bien-être', en: 'Your wellness program' }, icon: 'wellness', steps, warnings: detectConflicts(steps) }]
+      } else {
+        const cleanser = bestOf('cleanser')
+        const serumAM = bestOf('serum')
+        const moisturizer = bestOf('moisturizer')
+        const sunscreen = bestOf('sunscreen')
+        const serumPM = bestOf('serum', serumAM ? [serumAM.slug] : []) || serumAM
+        const morning = [
+          cleanser && { order: 1, category: 'cleanser', product: cleanser },
+          serumAM && { order: 2, category: 'serum', product: serumAM },
+          moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
+          sunscreen && { order: 4, category: 'sunscreen', product: sunscreen },
+        ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
+        const evening = [
+          cleanser && { order: 1, category: 'cleanser', product: cleanser },
+          serumPM && { order: 2, category: 'serum', product: serumPM },
+          moisturizer && { order: 3, category: 'moisturizer', product: moisturizer },
+        ].filter(Boolean).map((s, idx) => ({ ...s, order: idx + 1 }))
+        sections = [
+          { id: 'morning', title: { fr: 'Routine du matin', en: 'Morning routine' }, icon: 'sun', steps: morning, warnings: detectConflicts(morning) },
+          { id: 'evening', title: { fr: 'Routine du soir', en: 'Evening routine' }, icon: 'moon', steps: evening, warnings: detectConflicts(evening) },
+        ]
+      }
+
+      const routineSlugs = new Set(sections.flatMap((s) => s.steps.map((st) => st.product.slug)))
       const alternatives = scoredAll.filter((p) => !routineSlugs.has(p.slug) && p.score > 20).slice(0, 4)
       const results = scoredAll.filter((p) => p.score > 20).slice(0, 6)
-      const warnings = { morning: detectConflicts(morning), evening: detectConflicts(evening) }
-      return json({ routine: { morning, evening, warnings }, alternatives, results, total: results.length })
+
+      // Canonical sections + backward-compatible morning/evening/warnings (skincare)
+      const morningSec = sections.find((s) => s.id === 'morning')
+      const eveningSec = sections.find((s) => s.id === 'evening')
+      const routine = {
+        vertical,
+        sections,
+        morning: morningSec ? morningSec.steps : [],
+        evening: eveningSec ? eveningSec.steps : [],
+        warnings: { morning: morningSec?.warnings || [], evening: eveningSec?.warnings || [] },
+      }
+      return json({ routine, alternatives, results, total: results.length })
     }
 
     // ---- SAVE / SHARE A ROUTINE ----
     if (path[0] === 'routines') {
       const routine = body.routine
-      if (!routine || (!routine.morning?.length && !routine.evening?.length)) {
+      const hasSteps = routine && (
+        (Array.isArray(routine.sections) && routine.sections.some((s) => s.steps?.length)) ||
+        routine.morning?.length || routine.evening?.length
+      )
+      if (!hasSteps) {
         return json({ error: 'routine is required' }, 400)
       }
       const shortId = uuidv4().replace(/-/g, '').slice(0, 10)
@@ -485,6 +531,32 @@ export async function POST(request, { params }) {
       }
       await database.collection('routines').insertOne({ ...doc })
       return json({ id: shortId }, 201)
+    }
+
+    // ---- NEWSLETTER SIGNUP ----
+    if (path[0] === 'newsletter') {
+      const email = (body.email || '').trim().toLowerCase()
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      if (!valid) return json({ error: 'valid email is required' }, 400)
+      const existing = await database.collection('subscribers').findOne({ email })
+      if (existing) return json({ ok: true, already: true })
+      await database.collection('subscribers').insertOne({
+        id: uuidv4(), email, lang: body.lang || 'fr', source: body.source || 'site', created_at: new Date().toISOString(),
+      })
+      return json({ ok: true, already: false }, 201)
+    }
+
+    // ---- AFFILIATE / EVENT TRACKING ----
+    if (path[0] === 'track') {
+      const evt = {
+        id: uuidv4(),
+        type: body.type || 'affiliate_click',
+        product_slug: body.product_slug || null,
+        vertical: body.vertical || null,
+        created_at: new Date().toISOString(),
+      }
+      await database.collection('events').insertOne({ ...evt })
+      return json({ ok: true }, 201)
     }
 
     // ---- LEADS ----
@@ -509,6 +581,49 @@ export async function POST(request, { params }) {
       const token = uuidv4()
       await database.collection('sessions').insertOne({ token, created_at: new Date().toISOString() })
       return json({ token })
+    }
+
+    // ---- ADMIN: AI CONTENT GENERATION ----
+    if (path[0] === 'admin' && path[1] === 'generate') {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const key = process.env.EMERGENT_LLM_KEY
+      if (!key || !key.startsWith('sk-emergent-')) return json({ error: 'EMERGENT_LLM_KEY missing' }, 500)
+      const topic = (body.topic || '').trim()
+      if (topic.length < 3) return json({ error: 'topic is required (min 3 chars)' }, 400)
+      const vertical = body.vertical || 'skincare'
+      const category = body.category || 'guide'
+      const provider = process.env.LLM_PROVIDER || 'openai'
+      const model = process.env.LLM_MODEL || 'gpt-4o-mini'
+
+      const system = `You are a bilingual (French/English) senior editorial writer for a science-led German health & beauty discovery platform (skincare, hair, wellness). Write an original, evidence-based, non-promotional educational article. Avoid medical claims. Return ONLY valid minified JSON on a single line with EXACTLY this shape:
+{"slug":"kebab-case-slug","category":"guide|research|learn|how-to","title":{"fr":"...","en":"..."},"excerpt":{"fr":"...","en":"..."},"content":{"fr":["para1","para2","para3"],"en":["para1","para2","para3"]}}
+Rules: FR and EN must be natural and semantically equivalent (not word-for-word). content is an ARRAY of 3 to 5 plain paragraph strings; each paragraph is a single line WITHOUT any line breaks, markdown, or quotes inside. title <= 90 chars, excerpt <= 220 chars. slug is lowercase kebab-case derived from the FR title. Output must be strictly valid JSON.`
+      const prompt = `Topic: ${topic}\nUniverse/vertical: ${vertical}\nPreferred category: ${category}\nWrite the article now as JSON only.`
+
+      try {
+        const chat = new LlmChat(key, `dermalyze-gen-${uuidv4()}`, system)
+          .withModel(provider, model)
+          .withParams({ temperature: 0.5, max_tokens: 2500 })
+        const reply = await chat.sendMessage(new UserMessage({ text: prompt }))
+        let raw = String(reply).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+        // Keep only the JSON object and strip raw control chars (unescaped newlines/tabs) that break JSON.parse
+        const start = raw.indexOf('{'); const end = raw.lastIndexOf('}')
+        if (start >= 0 && end > start) raw = raw.slice(start, end + 1)
+        raw = raw.replace(/[\u0000-\u001F]+/g, ' ')
+        let article
+        try { article = JSON.parse(raw) } catch { return json({ error: 'Model did not return valid JSON', raw }, 502) }
+        // Normalize content arrays -> joined paragraphs
+        const joinContent = (c) => Array.isArray(c) ? c.join('\n\n') : (c || '')
+        if (article.content) { article.content = { fr: joinContent(article.content.fr), en: joinContent(article.content.en) } }
+        if (!article?.title?.fr || !article?.content?.fr) return json({ error: 'Incomplete generation', article }, 502)
+        article.vertical = vertical
+        article.category = article.category || category
+        return json({ article })
+      } catch (e) {
+        console.error('AI generate error', e?.message)
+        return json({ error: 'Generation failed', detail: e?.message }, 502)
+      }
     }
 
     // ---- ADMIN CREATE ----
