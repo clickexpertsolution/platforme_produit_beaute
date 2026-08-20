@@ -10,7 +10,7 @@ import sys
 import time
 
 # Base URL from environment
-BASE_URL = "https://reel-showcase-73.preview.emergentagent.com/api"
+BASE_URL = "https://multi-lang-ui-3.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "admin123"
 
 # Test counters

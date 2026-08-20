@@ -15,7 +15,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command'
 import {
-  t, ts, pick, pickText, tAdmin, Kw, isRTL, nextLang, LANG_LABEL, NUMBER_LOCALE, LANGS,
+  t, ts, pick, pickText, tAdmin, Kw, isRTL, LANG_META, NUMBER_LOCALE, LANGS,
 } from '@/lib/i18n'
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
@@ -194,6 +194,107 @@ const ProductCard = ({ p, lang, onOpen }) => (
 // ---------- Header ----------
 // Handoff §1 : sticky 72px, fond translucide + backdrop-blur(18px) saturate(1.4),
 // filet bas en box-shadow. Nav principale à gauche, groupe utilitaire à droite.
+// Sélecteur de langue « sophistiqué » : un Popover thématisé qui liste les 3
+// langues avec leur endonyme + libellé traduit, une pastille de code et une
+// coche sur la langue active. Contenu forcé en LTR pour rester lisible et
+// aligné à droite du déclencheur quelle que soit la direction de la page.
+const LanguageSwitcher = ({ lang, setLang, variant = 'header' }) => {
+  const [open, setOpen] = useState(false)
+  const current = LANG_META[lang]
+
+  if (variant === 'mobile') {
+    // Version « segments » pour le menu mobile : les 3 langues côte à côte.
+    return (
+      <div dir="ltr" className="mt-1 px-3 py-2">
+        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-dz-text-3">
+          {ts(lang, 'Langue', 'Language')}
+        </div>
+        <div className="flex gap-1.5 rounded-dz-pill bg-dz-surface-2 p-1">
+          {LANGS.map((l) => {
+            const active = l === lang
+            return (
+              <button
+                key={l}
+                data-testid={`lang-option-${l}`}
+                onClick={() => setLang(l)}
+                dir={LANG_META[l].dir}
+                className={`flex-1 rounded-dz-pill px-2 py-1.5 text-center text-[12.5px] transition-all duration-200 ${
+                  active
+                    ? 'bg-dz-surface text-dz-accent shadow-dz-card'
+                    : 'text-dz-text-2 hover:text-dz-ink'
+                }`}
+              >
+                {LANG_META[l].native}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          data-testid="lang-toggle"
+          aria-label={ts(lang, 'Changer de langue', 'Change language')}
+          title={current.native}
+          dir="ltr"
+          className="group inline-flex items-center gap-1.5 rounded-dz-pill border border-dz-rule bg-dz-surface/70 px-2.5 py-1.5 text-dz-nav shadow-dz-lang backdrop-blur transition-all duration-200 hover:border-dz-accent/40 hover:text-dz-accent hover:shadow-dz-card"
+        >
+          <Globe className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />
+          <span className="font-mono text-[11px] uppercase tracking-[0.08em]">{current.code}</span>
+          <ChevronDown className={`h-3 w-3 opacity-60 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={10}
+        dir="ltr"
+        className="w-56 rounded-dz-card border border-dz-rule bg-dz-surface p-1.5 shadow-dz-card"
+      >
+        <div className="px-2.5 pb-1.5 pt-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-dz-text-3">
+          {ts(lang, 'Choisir la langue', 'Choose language')}
+        </div>
+        {LANGS.map((l) => {
+          const m = LANG_META[l]
+          const active = l === lang
+          return (
+            <button
+              key={l}
+              data-testid={`lang-option-${l}`}
+              onClick={() => { setLang(l); setOpen(false) }}
+              className={`flex w-full items-center gap-3 rounded-dz-brand px-2.5 py-2 text-left transition-colors duration-150 ${
+                active
+                  ? 'bg-dz-accent-bg text-dz-accent'
+                  : 'text-dz-nav hover:bg-dz-surface-2 hover:text-dz-ink'
+              }`}
+            >
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-dz-pill font-mono text-[11px] uppercase leading-none transition-colors ${
+                  active ? 'bg-dz-accent text-dz-on-dark' : 'bg-dz-surface-2 text-dz-text-2'
+                }`}
+              >
+                {m.code}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span dir={m.dir} className="block truncate text-[13.5px] font-medium leading-tight">
+                  {m.native}
+                </span>
+                <span className="block truncate text-[11px] leading-tight text-dz-text-3">
+                  {m.label[lang]}
+                </span>
+              </span>
+              {active && <Check className="h-4 w-4 shrink-0 text-dz-accent" />}
+            </button>
+          )
+        })}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 const Header = ({ lang, setLang, nav, route }) => {
   const [open, setOpen] = useState(false)
 
@@ -217,7 +318,7 @@ const Header = ({ lang, setLang, nav, route }) => {
 
   return (
     <header className="sticky top-0 z-30 bg-[rgba(246,245,242,0.82)] shadow-dz-header backdrop-blur-[18px] backdrop-saturate-[1.4]">
-      <div className="mx-auto flex h-[72px] max-w-dz items-center gap-11 px-5 md:px-11">
+      <div dir="ltr" className="mx-auto flex h-[72px] max-w-dz items-center gap-11 px-5 md:px-11">
         <button data-testid="logo-btn" onClick={() => go('home')} className="flex shrink-0 items-baseline gap-[9px] text-dz-ink">
           <span className="font-display text-[26px] leading-none tracking-[-0.01em]">Dermalyze</span>
           <Mono className="text-[9.5px] tracking-[0.16em] text-dz-text-3">{t(lang, 'Science', 'Science')}</Mono>
@@ -244,13 +345,8 @@ const Header = ({ lang, setLang, nav, route }) => {
             </button>
           ))}
 
-          {/* Bascule de langue : cycle FR → EN → AR (l'arabe bascule la page en RTL). */}
-          <button data-testid="lang-toggle" onClick={() => setLang(nextLang(lang))}
-            aria-label={ts(lang, 'Changer de langue', 'Change language')}
-            title={`${LANG_LABEL[lang]} → ${LANG_LABEL[nextLang(lang)]}`}
-            className="px-0.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-dz-nav shadow-dz-lang transition-colors duration-200 hover:text-dz-accent">
-            {LANG_LABEL[lang]}
-          </button>
+          {/* Sélecteur de langue : Popover FR / EN / AR (l'arabe bascule la page en RTL). */}
+          <LanguageSwitcher lang={lang} setLang={setLang} />
 
           <InkButton data-testid="nav-finder" onClick={() => go('finder')} className="hidden sm:inline-block">
             {t(lang, 'Trouver mon produit', 'Product Finder')}
@@ -272,6 +368,9 @@ const Header = ({ lang, setLang, nav, route }) => {
                 {pick(it, lang)}
               </button>
             ))}
+            <div className="mt-1.5 shadow-dz-rule-t pt-1.5">
+              <LanguageSwitcher lang={lang} setLang={setLang} variant="mobile" />
+            </div>
           </div>
         </div>
       )}

@@ -613,3 +613,20 @@ agent_communication:
     message: "TEST BACKEND ONLY — product enrichment after SEED_VERSION=4 re-seed. (1) GET /api/products=30, /api/brands=11, /api/ingredients=24. (2) Every product has certifications[] ({name:{fr,en}, scope in EU/US/global}), awards[] (may be empty), studies[] ({title:{fr,en},source,year,url}). (3) eucerin-hyaluron-filler-serum (rating>=4.6) has award 'Label 2026 — Meilleur produit certifié' and a 'US' scope certification. (4) GET /api/products/eucerin-hyaluron-filler-serum: each ingredient_details has studies[] with url; product studies[] has url+summary{fr,en}; ingredients length 4 (acide-hyaluronique,glycerine,panthenol,squalane). (5) Every ingredient in /api/ingredients has studies[] (>=1, with url); niacinamide/retinol/vitamine-c have curated pubmed urls. (6) Regression: ?vertical=hair=>8, ?category=serum, ?concern=acne; search=retinol and search=rétinol; compare endpoint; admin login admin123 + stats; no _id leaked; no 500s. Do NOT test frontend."
   - agent: "testing"
     message: "✓ Product sheet enrichment (SEED_VERSION=4) backend testing complete - ALL 30 tests passed (100% success rate). Comprehensive testing performed on all requirements: (1) Counts regression verified - 30 products, 11 brands, 24 ingredients, no _id fields anywhere. (2) Product enrichment fields validated - all products have certifications/awards/studies arrays with correct structure. (3) Award label verified - high-rated product has 'Label 2026 — Meilleur produit certifié' and US certification. (4) Product detail enrichment verified - eucerin-hyaluron-filler-serum has 4 ingredients (acide-hyaluronique, glycerine, panthenol, squalane), product studies with url+summary, all ingredient_details have studies with urls. (5) Ingredient studies verified - all 24 ingredients have studies with urls, niacinamide/retinol/vitamine-c have curated pubmed urls (not generic ?term= fallback). (6) All filter/search regressions passed - vertical=hair (8), category=serum (6), concern=acne (3), search=retinol and search=rétinol both work. (7) All other endpoint regressions passed - compare, admin login, admin stats. (8) No 500 errors, all responses valid JSON. Backend API is production-ready for SEED_VERSION=4."
+
+frontend:
+  - task: "Language selector redesign: replaced the FR→EN→AR cycle button with a sophisticated themed Popover dropdown (LanguageSwitcher). Trigger = pill (Globe + current code FR/EN/ع + chevron). Dropdown lists all 3 languages with endonym (Français/English/العربية) + translated label + code badge + check on active. Mobile menu gets a segmented control variant. Header top-bar pinned dir='ltr' so the selector KEEPS ITS POSITION (top-right) when Arabic activates RTL. Added LANG_META to lib/i18n.js. Also recreated missing /app/.env (MONGO_URL, DB_NAME=dermalyze, NEXT_PUBLIC_BASE_URL, ADMIN_PASSWORD=admin123, EMERGENT_LLM_KEY, LLM_PROVIDER, LLM_MODEL) which was causing 500s."
+    implemented: true
+    working: true
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Verified via screenshots: (1) desktop dropdown opens with 'Choisir la langue' header + FR(active,check)/EN/العربية rows. (2) Selecting Arabic sets document.documentElement.dir='rtl', page content flips RTL, but lang-toggle stays at same position (bounding box x=1282 in both FR and AR) and trigger shows 'ع'. (3) Mobile menu shows a 'Langue' segmented control with Français/English/العربية, all visible. Position-stability requirement satisfied."
+
+agent_communication:
+  - agent: "main"
+    message: "Frontend-only change (language selector UX + RTL position stability). Verified visually with Playwright screenshots (desktop dropdown, Arabic RTL position, mobile segmented control). No backend change. Awaiting user decision on whether to run automated frontend testing."

@@ -10,7 +10,7 @@ import sys
 from typing import Dict, List, Any
 
 # Base URL from environment
-BASE_URL = "https://eddc6e9b-ad88-4b75-96c8-5fd66b9478e1.preview.emergentagent.com/api"
+BASE_URL = "https://multi-lang-ui-3.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "admin123"
 
 class TestResults:
