@@ -656,3 +656,16 @@ frontend:
       - working: true
         agent: "main"
         comment: "Verified via screenshot on #/product/weleda-skin-food in AR/RTL: product title 'Skin Food Original' renders as a normal ink heading (no dark block); brand 'Weleda', ingredient names (Panthénol/Squalane/Aloe Vera/Glycérine) and INCI codes render as soft light accent chips matching the platform theme. No dark-navy keyword pills remain in the light UI."
+
+frontend:
+  - task: "Header responsiveness fix: (1) inline nav overflowed the max-w-dz (1320px) cap by ~60px even on large screens (gap-11 outer + gap-7 nav + 14px text too wide) so the CTA was clipped on the right. (2) Utility links (Reels/Guides/Pour les marques) appeared at lg (1024) while main nav appeared at xl (1280), creating an inconsistent in-between state (utility links visible, main links hidden). Fix in app/page.js Header: reduced gaps (outer gap-4 xl:gap-6, nav gap-4 2xl:gap-6, right group gap-3 xl:gap-4), nav text 13px→14px at 2xl, and moved utility links to xl:block so ALL inline nav shows/hides together at xl (hamburger below xl)."
+    implemented: true
+    working: true
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Verified header scrollWidth vs clientWidth at 9 widths (1920/1440/1366/1280/1200/1024/900/768/390) in FR and AR: NO overflow anywhere (scrollW == clientW). Full nav (flex) shows at >=1280 and fits within 1320px cap in both FR and RTL Arabic; below 1280 the nav collapses to hamburger consistently (both main + utility). Intermediate range (1100) now shows a clean logo + lang + CTA + hamburger instead of partial nav."

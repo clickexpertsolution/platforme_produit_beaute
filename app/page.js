@@ -318,13 +318,13 @@ const Header = ({ lang, setLang, nav, route }) => {
 
   return (
     <header className="sticky top-0 z-30 bg-[rgba(246,245,242,0.82)] shadow-dz-header backdrop-blur-[18px] backdrop-saturate-[1.4]">
-      <div dir="ltr" className="mx-auto flex h-[72px] max-w-dz items-center gap-11 px-5 md:px-11">
+      <div dir="ltr" className="mx-auto flex h-[72px] max-w-dz items-center gap-4 px-5 md:px-11 xl:gap-6">
         <button data-testid="logo-btn" onClick={() => go('home')} className="flex shrink-0 items-baseline gap-[9px] text-dz-ink">
           <span className="font-display text-[26px] leading-none tracking-[-0.01em]">Dermalyze</span>
           <Mono className="text-[9.5px] tracking-[0.16em] text-dz-text-3">{t(lang, 'Science', 'Science')}</Mono>
         </button>
 
-        <nav className="hidden items-center gap-7 whitespace-nowrap text-[14px] xl:flex">
+        <nav className="hidden items-center gap-4 whitespace-nowrap text-[13px] xl:flex 2xl:gap-6 2xl:text-[14px]">
           {mainItems.map((it) => (
             <button key={it.v} data-testid={`nav-${it.v}`} onClick={() => go(it.v)}
               className={`transition-colors duration-200 hover:text-dz-accent-hover ${
@@ -335,10 +335,10 @@ const Header = ({ lang, setLang, nav, route }) => {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-5 whitespace-nowrap">
+        <div className="ml-auto flex items-center gap-3 whitespace-nowrap xl:gap-4">
           {utilityItems.map((it) => (
             <button key={it.v} data-testid={`nav-${it.v}`} onClick={() => go(it.v)}
-              className={`hidden text-[14px] transition-colors duration-200 hover:text-dz-accent-hover lg:block ${
+              className={`hidden text-[13px] transition-colors duration-200 hover:text-dz-accent-hover xl:block 2xl:text-[14px] ${
                 route.view === it.v ? 'text-dz-accent' : 'text-dz-nav'
               }`}>
               {pick(it, lang)}
