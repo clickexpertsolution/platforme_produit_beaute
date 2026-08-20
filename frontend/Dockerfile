@@ -12,7 +12,8 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Garantit que public/ existe même si absent du repo
+# Garantit que public/ existe même si absent du repo (il contient les icônes,
+# le visuel de partage et le manifeste)
 RUN mkdir -p public
 
 # Variable principale (Coolify) — exposée navigateur + proxy SSR
@@ -21,6 +22,10 @@ ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 # Fallback docker-compose (réseau interne Docker)
 ARG BACKEND_URL
 ENV BACKEND_URL=$BACKEND_URL
+# URL publique du site : sert de base aux métadonnées de partage (og:image
+# absolue pour WhatsApp), au canonical, à robots.txt et au sitemap.
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 
