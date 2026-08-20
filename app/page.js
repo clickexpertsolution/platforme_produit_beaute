@@ -205,7 +205,7 @@ const Header = ({ lang, setLang, nav, route }) => {
     { v: 'learn', fr: 'Guides', en: 'Guides' },
     { v: 'for-brands', fr: 'Pour les marques', en: 'For Brands' },
   ]
-  const allItems = [...mainItems, ...utilityItems, { v: 'finder', fr: 'Product Finder', en: 'Product Finder' }]
+  const allItems = [...mainItems, ...utilityItems, { v: 'finder', fr: 'Trouver mon produit', en: 'Product Finder' }]
 
   const go = (v) => { nav(v); setOpen(false) }
 
@@ -245,7 +245,7 @@ const Header = ({ lang, setLang, nav, route }) => {
           </button>
 
           <InkButton data-testid="nav-finder" onClick={() => go('finder')} className="hidden sm:inline-block">
-            Product Finder
+            {lang === 'fr' ? 'Trouver mon produit' : 'Product Finder'}
           </InkButton>
 
           <button data-testid="mobile-menu-btn" aria-label="Menu" aria-expanded={open}
