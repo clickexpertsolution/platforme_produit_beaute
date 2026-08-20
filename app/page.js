@@ -914,12 +914,20 @@ const ReelsRail = ({ reels, lang, nav }) => {
 }
 
 // ---------- Reels feed (route /reels) ----------
-// Feed vertical plein écran : défilement par à-coups (scroll snap), seule la
-// vidéo visible est montée en iframe, navigation clavier et lien profond.
+// Deux mises en page, un seul composant :
+// - desktop (lg+) : feed plein écran, vidéo + panneau côte à côte, défilement
+//   par à-coups (scroll snap) dans un conteneur dédié ;
+// - mobile : flux de page normal (aucun conteneur défilant imbriqué), vidéo
+//   dimensionnée par la hauteur d'écran puis panneau éditorial dessous.
+// Dans les deux cas, seule la vidéo active est montée en iframe.
+const DESKTOP_FEED_MQ = '(min-width: 1024px)'
+
 const ReelsView = ({ lang, nav, slug }) => {
   const [reels, setReels] = useState([])
   const [loading, setLoading] = useState(true)
   const [active, setActive] = useState(0)
+  // `true` = feed desktop : le conteneur est lui-même la zone défilante.
+  const [feedMode, setFeedMode] = useState(false)
   const containerRef = useRef(null)
   const itemRefs = useRef([])
 
@@ -928,6 +936,14 @@ const ReelsView = ({ lang, nav, slug }) => {
       .then((r) => r.json())
       .then((d) => { setReels(d.reels || []); setLoading(false) })
       .catch(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_FEED_MQ)
+    const apply = () => setFeedMode(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [])
 
   // Lien profond : #/reels/{slug} ouvre directement le bon reel.
@@ -940,7 +956,9 @@ const ReelsView = ({ lang, nav, slug }) => {
     }
   }, [reels, slug])
 
-  // La vidéo active est celle qui occupe le viewport.
+  // La vidéo active est celle qui occupe le viewport. En feed desktop la
+  // référence est le conteneur défilant ; en mobile c'est le viewport, et on
+  // vise la bande centrale de l'écran car un reel peut y être plus haut que lui.
   useEffect(() => {
     if (!reels.length) return
     const observer = new IntersectionObserver(
@@ -952,11 +970,13 @@ const ReelsView = ({ lang, nav, slug }) => {
           }
         })
       },
-      { root: containerRef.current, threshold: 0.6 }
+      feedMode
+        ? { root: containerRef.current, threshold: 0.6 }
+        : { root: null, rootMargin: '-35% 0px -35% 0px', threshold: 0 }
     )
     itemRefs.current.filter(Boolean).forEach((n) => observer.observe(n))
     return () => observer.disconnect()
-  }, [reels])
+  }, [reels, feedMode])
 
   const goTo = useCallback((i) => {
     const next = Math.max(0, Math.min(i, itemRefs.current.length - 1))
@@ -995,7 +1015,9 @@ const ReelsView = ({ lang, nav, slug }) => {
     <div
       ref={containerRef}
       data-testid="reels-feed"
-      className="h-[calc(100dvh-72px)] snap-y snap-mandatory overflow-y-auto overscroll-contain"
+      // Mobile : on laisse la page défiler (un seul ascenseur). Le conteneur ne
+      // devient une zone défilante autonome qu'à partir de lg.
+      className="lg:h-[calc(100dvh-72px)] lg:snap-y lg:snap-mandatory lg:overflow-y-auto lg:overscroll-contain"
     >
       {reels.map((reel, i) => {
         const video = parseVideoUrl(reel.video_url)
@@ -1008,11 +1030,17 @@ const ReelsView = ({ lang, nav, slug }) => {
             data-index={i}
             data-testid={`reel-${reel.slug}`}
             ref={(n) => { itemRefs.current[i] = n }}
-            className="flex h-full snap-start items-center justify-center px-5 py-6 md:px-11"
+            // scroll-mt : le header sticky (72px) ne doit pas recouvrir le haut
+            // de la vidéo quand on arrive par lien profond ou par les flèches.
+            // Filet de séparation entre reels, utile seulement en flux mobile.
+            className={`flex scroll-mt-[72px] flex-col items-center justify-center px-5 pb-14 pt-6 md:px-11 lg:h-full lg:snap-start lg:scroll-mt-0 lg:pb-6 ${
+              i > 0 ? 'shadow-dz-rule-t lg:shadow-none' : ''
+            }`}
           >
-            <div className="flex h-full w-full max-w-dz flex-col items-center gap-8 lg:flex-row lg:justify-center lg:gap-16">
-              {/* Lecteur 9:16 */}
-              <div className="relative aspect-[9/16] h-full max-h-full w-auto max-w-full shrink overflow-hidden rounded-dz-card bg-dz-ink shadow-dz-card">
+            <div className="flex w-full max-w-dz flex-col items-center gap-7 lg:h-full lg:flex-row lg:justify-center lg:gap-16">
+              {/* Lecteur 9:16 : en mobile la largeur découle de la hauteur
+                  d'écran disponible, pour rester entier sans déborder. */}
+              <div className="relative aspect-[9/16] w-full max-w-[min(100%,max(240px,calc(62svh*9/16)))] shrink-0 overflow-hidden rounded-dz-card bg-dz-ink shadow-dz-card lg:h-full lg:w-auto lg:max-w-full lg:shrink">
                 {isActive && video.embed ? (
                   <iframe
                     src={video.embed}
