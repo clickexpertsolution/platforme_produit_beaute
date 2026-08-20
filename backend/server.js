@@ -242,14 +242,57 @@ async function seedIfEmpty(database) {
 // doit pas forcer une remise à zéro complète du contenu, qui effacerait les
 // saisies du back-office. Un versionnage dédié permet néanmoins de remplacer
 // proprement le jeu de reels de démo lorsque REELS_VERSION est incrémenté.
-async function seedReelsIfEmpty(database) {
+//
+// Verrou intra-processus : la page d'accueil déclenche cinq appels /api en
+// parallèle, qui exécutaient chacun le ré-ensemencement. Les `deleteMany` et
+// `insertMany` s'entrelaçaient, et la collection se retrouvait avec le jeu de
+// reels en double ou en triple. On ne garde donc qu'un ensemencement en vol à
+// la fois ; il est relâché ensuite, pour que l'auto-réparation reste active si
+// la collection est vidée depuis le back-office.
+let reelsSeeding = null
+function seedReelsIfEmpty(database) {
+  if (!reelsSeeding) {
+    reelsSeeding = runReelsSeed(database).finally(() => { reelsSeeding = null })
+  }
+  return reelsSeeding
+}
+
+// Index unique sur le slug : dernière ligne de défense contre les doublons,
+// y compris entre deux instances (backend Express + route Next, ou plusieurs
+// conteneurs) qui partagent la même base.
+let reelsIndexReady = false
+async function ensureReelsIndex(reels) {
+  if (reelsIndexReady) return
+  try {
+    await reels.createIndex({ slug: 1 }, { unique: true })
+    reelsIndexReady = true
+  } catch {
+    // Doublons résiduels non encore nettoyés : nouvelle tentative au prochain appel.
+  }
+}
+
+async function runReelsSeed(database) {
+  const reels = database.collection('reels')
+
+  // Nettoyage des doublons hérités d'un ré-ensemencement concurrent : on garde
+  // un seul document par slug.
+  const docs = await reels.find({}, { projection: { _id: 1, slug: 1, video_url: 1 } }).toArray()
+  const bySlug = new Map()
+  const duplicateIds = []
+  for (const d of docs) {
+    if (bySlug.has(d.slug)) duplicateIds.push(d._id)
+    else bySlug.set(d.slug, d)
+  }
+  if (duplicateIds.length) await reels.deleteMany({ _id: { $in: duplicateIds } })
+  await ensureReelsIndex(reels)
+
   const before = await database.collection('meta').findOneAndUpdate(
     { key: 'reels_version' },
     { $set: { key: 'reels_version', version: REELS_VERSION, at: new Date().toISOString() } },
     { upsert: true, returnDocument: 'before' }
   )
   const currentVersion = before && typeof before.version === 'number' ? before.version : 0
-  const existing = await database.collection('reels').find({}, { projection: { slug: 1, video_url: 1, _id: 0 } }).toArray()
+  const existing = [...bySlug.values()]
   const count = existing.length
   // Auto-réparation : anciens slugs de démo (versions précédentes) présents en base,
   // ou plusieurs reels pointant vers la même URL placeholder => on force le ré-ensemencement.
@@ -258,9 +301,26 @@ async function seedReelsIfEmpty(database) {
   const distinctUrls = new Set(existing.map((r) => r.video_url))
   const looksPlaceholder = count > 1 && distinctUrls.size === 1
   if (count > 0 && currentVersion >= REELS_VERSION && !hasStaleSlug && !looksPlaceholder) return
+
+  // Écriture idempotente : la collection n'est jamais vidée (fenêtre pendant
+  // laquelle une requête concurrente se croyait légitime à ré-ensemencer) et
+  // chaque reel de démo est remplacé par son slug.
   const now = new Date().toISOString()
-  await database.collection('reels').deleteMany({})
-  await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
+  const slugs = SEED_REELS.map((r) => r.slug)
+  await reels.deleteMany({ slug: { $nin: slugs } })
+  try {
+    await reels.bulkWrite(
+      SEED_REELS.map((r) => ({
+        replaceOne: { filter: { slug: r.slug }, replacement: { ...r, id: uuidv4(), created_at: now }, upsert: true },
+      })),
+      { ordered: false }
+    )
+  } catch (e) {
+    // 11000 = un ré-ensemencement concurrent a inséré le même slug entre-temps ;
+    // le contenu écrit est identique, il n'y a rien à rejouer.
+    const codes = [e && e.code, ...((e && e.writeErrors) || []).map((w) => w && w.code)]
+    if (!codes.includes(11000)) throw e
+  }
 }
 
 async function requireAdmin(req, database) {
