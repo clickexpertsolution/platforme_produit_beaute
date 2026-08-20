@@ -643,3 +643,16 @@ frontend:
       - working: true
         agent: "main"
         comment: "Verified via screenshot (footer, AR/RTL): 'أدوات' section shows اعثر على منتجك / أداة المقارنة / نصائح / التعلّم والأدلّة / ريلز; 'للمحترفين' shows للعلامات التجارية / لوحة التحكم. Header nav shows ريلز. No Latin keyword pills remain for these 3 terms."
+
+frontend:
+  - task: "Arabic keyword pill retheming: in AR/RTL, untranslated Latin terms (brand/product/ingredient names, INCI) were rendered as heavy dark-navy pills (.dz-kw / .dz-kw--title) clashing with the light theme — most jarring on product/brand/ingredient hero titles (e.g. 'Skin Food Original' as a big navy block). Rethemed in app/globals.css: inline .dz-kw now a soft on-theme chip (bg accent-bg #EFF3F5, text accent #1F4E6B, hairline inset border); .dz-kw--title now has NO background (transparent, inherits ink title color) so big Latin titles read as normal headings. Added guards so title variant stays background-free on dark blocks too."
+    implemented: true
+    working: true
+    file: "app/globals.css"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Verified via screenshot on #/product/weleda-skin-food in AR/RTL: product title 'Skin Food Original' renders as a normal ink heading (no dark block); brand 'Weleda', ingredient names (Panthénol/Squalane/Aloe Vera/Glycérine) and INCI codes render as soft light accent chips matching the platform theme. No dark-navy keyword pills remain in the light UI."

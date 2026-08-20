@@ -52,8 +52,9 @@
     /* --- Mot-clé sans équivalent arabe (pastille .dz-kw) ---
        Fond plus foncé que la page, pris dans la famille de l'accent pour
        rester dans le ton de la plateforme. */
-    --dz-kw-bg: #12303F;
-    --dz-kw-text: #F6F5F2;
+    --dz-kw-bg: #EFF3F5;
+    --dz-kw-text: #1F4E6B;
+    --dz-kw-border: rgba(31, 78, 107, 0.16);
     --dz-kw-bg-on-dark: rgba(246, 245, 242, 0.16);
 
     /* --- Placeholder d'image (rayures diagonales du prototype) --- */
@@ -198,9 +199,9 @@
    Arabe (RTL) & mots-clés non traduits
    ========================================================================== */
 
-/* Mot-clé conservé tel quel (marque, INCI, sigle, nom de produit) : pastille
-   au fond plus foncé, direction LTR isolée pour rester lisible au milieu d'un
-   texte arabe. */
+/* Mot-clé conservé tel quel (marque, INCI, sigle, nom de produit) : puce claire
+   accordée au thème (fond accent-bg + texte accent + filet fin), direction LTR
+   isolée pour rester lisible au milieu d'un texte arabe. */
 .dz-kw {
   display: inline-block;
   direction: ltr;
@@ -208,35 +209,50 @@
   font-family: var(--font-plex-mono), 'IBM Plex Mono', monospace;
   font-size: 0.92em;
   line-height: 1.35;
-  padding: 0.06em 0.42em;
-  margin-inline: 0.14em;
+  padding: 0.04em 0.4em;
+  margin-inline: 0.12em;
   border-radius: 6px;
   background: var(--dz-kw-bg);
   color: var(--dz-kw-text);
+  box-shadow: inset 0 0 0 1px var(--dz-kw-border);
   letter-spacing: 0.01em;
   text-transform: none;
   vertical-align: baseline;
   white-space: nowrap;
 }
 
-/* Variante titre : même fond foncé, mais la typo du titre est conservée pour
-   ne pas transformer un nom de produit en bloc de code. */
+/* Variante titre : pas de puce du tout. Un nom de produit/marque/ingrédient en
+   grand titre reste dans la couleur d'encre du titre (accent latin isolé LTR)
+   au lieu d'un gros bloc foncé qui jurait avec le thème clair. */
 .dz-kw--title {
   font-family: inherit;
   font-size: inherit;
-  padding: 0.02em 0.26em;
-  border-radius: 8px;
+  padding: 0;
+  border-radius: 0;
   margin-inline: 0;
   white-space: normal;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
 }
 
-/* Sur les blocs sombres (CTA, guide d'achat, reels), la pastille foncée se
-   fondrait dans le fond : on l'éclaircit. */
+/* Sur les blocs sombres (CTA, guide d'achat, reels), la puce claire se
+   fondrait dans le fond : on l'éclaircit en surbrillance translucide. */
 .bg-dz-ink .dz-kw,
 .text-dz-on-dark .dz-kw,
 .text-white .dz-kw {
   background: var(--dz-kw-bg-on-dark);
   color: var(--dz-on-dark);
+  box-shadow: none;
+}
+
+/* La variante titre ne porte jamais de fond, y compris sur bloc sombre. */
+.bg-dz-ink .dz-kw--title,
+.text-dz-on-dark .dz-kw--title,
+.text-white .dz-kw--title {
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
 }
 
 /* Groupes numériques (prix, notes, compteurs) : ils gardent l'ordre latin
