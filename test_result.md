@@ -412,3 +412,29 @@ agent_communication:
     message: "PHASE B (Authority) backend — test ONLY backend. Admin password admin123. (1) POST /api/admin/generate WITHOUT Authorization => 401. (2) POST /api/admin/generate with Bearer + body {\"topic\":\"a\"} (too short) => 400. (3) POST /api/admin/generate with Bearer + body {\"topic\":\"Comment choisir un écran solaire adapté\",\"vertical\":\"skincare\",\"category\":\"guide\"} => 200 with article object having slug (kebab-case string), category, vertical='skincare', title.fr & title.en (non-empty), excerpt.fr & excerpt.en, content.fr & content.en (non-empty strings, content may contain blank-line separated paragraphs). NOTE: this makes a REAL LLM call (~5-20s), allow up to 90s timeout; only call it ONCE or twice to limit credit usage. (4) Articles draft filter: GET /api/articles => note total (should be 4, no drafts). Create a draft via POST /api/admin/articles (Bearer) with body {\"slug\":\"test-draft-xyz\",\"category\":\"guide\",\"status\":\"draft\",\"title\":{\"fr\":\"Brouillon test\",\"en\":\"Test draft\"},\"excerpt\":{\"fr\":\"x\",\"en\":\"x\"},\"content\":{\"fr\":\"x\",\"en\":\"x\"}} => 201. Then GET /api/articles (public) must NOT include test-draft-xyz; GET /api/articles?all=1 MUST include it. Clean up: DELETE /api/admin/articles/{id} (Bearer). (5) Regression: GET /api/products => 30; POST /api/admin/login admin123 => token; GET /api/admin/stats => includes products, subscribers, affiliate_clicks. Do NOT test frontend."
   - agent: "testing"
     message: "✓ Phase B (Authority) backend testing complete - 17/18 tests passed (94.4% success rate). Comprehensive testing performed on all Phase B features: (1) Authentication working perfectly (401 without Bearer token). (2) Validation working perfectly (400 for short topic with proper error message). (3) AI generation endpoint is implemented correctly and generates valid bilingual articles (verified via manual curl test: proper article structure with all required fields). The 502 errors during automated testing are due to LLM API budget being exceeded (server logs: 'Budget has been exceeded! Current cost: 0.00134985, Max budget: 0.001'). Manual testing confirms endpoint works correctly when budget is available. Error handling is working as designed (catching LLM budget error and returning 502). (4) Draft filtering working perfectly - all 7 tests passed: public endpoint excludes drafts, all=1 includes drafts, CRUD operations work correctly. (5) All regression tests passed: 30 products, admin stats includes all required numeric fields. Core Phase B functionality is production-ready. The AI generation endpoint is correctly implemented and works when LLM API budget is available."
+
+backend:
+  - task: "Reels seed fix: replaced 5 placeholder reels (all same URL) with exactly 4 real YouTube Shorts (I1nvw5Y0sBM, N_WtZz1X2x0, OvQ0ewFhMqc, zYALugUIClA), aligned bilingual titles/captions to each video's topic. Added version-based re-seed (REELS_VERSION=3, meta.reels_version) so seed changes replace old demo reels. NOTE: root cause of empty /#/reels page was MISSING /app/.env (MONGO_URL undefined => all endpoints 500); recreated .env (MONGO_URL, DB_NAME=dermalyze, NEXT_PUBLIC_BASE_URL, ADMIN_PASSWORD=admin123, EMERGENT_LLM_KEY, LLM_PROVIDER=openai, LLM_MODEL=gpt-4o-mini)."
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Verified via curl: GET /api/reels returns total:4 with the 4 distinct shorts URLs. All 4 videos confirmed public via YouTube oEmbed. Frontend /#/reels feed renders 4 reels with thumbnails + editorial panel (screenshot confirmed)."
+
+frontend:
+  - task: "Reels thumbnail quality: parseVideoUrl now uses YouTube Shorts vertical thumbnail (oardefault.jpg) with onError fallback to hqdefault.jpg in both ReelCard (home rail) and ReelsView (feed)."
+    implemented: true
+    working: "NA"
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Screenshot confirms thumbnails render (oardefault for 3 videos, hqdefault fallback for OvQ0ewFhMqc which has no oardefault). Note: YouTube iframe shows 'Video unavailable' only in headless/automation browser (bot detection); videos are public and play in real browsers."

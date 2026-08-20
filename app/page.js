@@ -716,7 +716,10 @@ const parseVideoUrl = (url = '') => {
       id,
       // autoplay muet + boucle : le seul mode de lecture automatique accepté par les navigateurs
       embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=1&rel=0&playsinline=1&modestbranding=1`,
-      thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      // oardefault = image au format original (vertical pour les Shorts, sans bandes noires) ;
+      // repli sur hqdefault (toujours disponible) via onError si oardefault manque.
+      thumbnail: `https://i.ytimg.com/vi/${id}/oardefault.jpg`,
+      thumbnailFallback: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
       watch: `https://www.youtube.com/shorts/${id}`,
     }
   }
@@ -755,7 +758,17 @@ const ReelCard = ({ reel, lang, onOpen }) => {
       className="group relative aspect-[9/16] w-[220px] shrink-0 snap-start overflow-hidden rounded-dz-card bg-dz-ink text-left shadow-dz-card transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-dz-card-hover md:w-[248px]"
     >
       {video.thumbnail ? (
-        <img src={video.thumbnail} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+        <img
+          src={video.thumbnail}
+          alt=""
+          loading="lazy"
+          onError={(e) => {
+            if (video.thumbnailFallback && e.currentTarget.src !== video.thumbnailFallback) {
+              e.currentTarget.src = video.thumbnailFallback
+            }
+          }}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
       ) : (
         <span className="dz-placeholder absolute inset-0 block" />
       )}
@@ -912,7 +925,17 @@ const ReelsView = ({ lang, nav, slug }) => {
                     loading="lazy"
                   />
                 ) : video.thumbnail ? (
-                  <img src={video.thumbnail} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+                  <img
+                    src={video.thumbnail}
+                    alt=""
+                    loading="lazy"
+                    onError={(e) => {
+                      if (video.thumbnailFallback && e.currentTarget.src !== video.thumbnailFallback) {
+                        e.currentTarget.src = video.thumbnailFallback
+                      }
+                    }}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
                 ) : (
                   <span className="dz-placeholder absolute inset-0 block" />
                 )}

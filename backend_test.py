@@ -9,7 +9,7 @@ import json
 import sys
 
 # Base URL from environment
-BASE_URL = "https://58265ec0-e6bb-4222-ae39-6cd7feac918f.preview.emergentagent.com/api"
+BASE_URL = "https://reel-showcase-73.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "admin123"
 
 # Test counters
