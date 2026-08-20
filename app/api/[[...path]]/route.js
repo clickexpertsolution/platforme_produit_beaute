@@ -210,12 +210,12 @@ const SEED_REELS = [
     },
   },
   {
-    slug: 'peau-sensible-reactive', video_url: 'https://youtube.com/shorts/OvQ0ewFhMqc', duration_s: 41,
+    slug: 'skincare-derives-2025', video_url: 'https://youtube.com/shorts/5Bqx3HTtXZM', duration_s: 41,
     vertical: 'skincare', published_at: '2025-06-22',
-    title: { fr: 'Peau sensible : la routine minimaliste', en: 'Sensitive skin: the minimalist routine' },
+    title: { fr: 'Skincare 2025 : les dérives à éviter', en: 'Skincare 2025: the trends to avoid' },
     caption: {
-      fr: "Moins d'ingrédients, moins de risques. Sur peau réactive, on privilégie des formules courtes et apaisantes.",
-      en: 'Fewer ingredients, fewer risks. On reactive skin, favour short, soothing formulas.',
+      fr: "Routines à rallonge, actifs empilés, tendances virales : trop de gestes fragilisent la barrière au lieu de la protéger.",
+      en: 'Endless routines, stacked actives, viral trends: too many steps weaken the barrier instead of protecting it.',
     },
   },
   {
@@ -231,7 +231,7 @@ const SEED_REELS = [
 
 // Version du jeu de reels : incrémenter pour forcer un ré-ensemencement propre
 // (efface les anciens reels de démo et réinsère SEED_REELS).
-const REELS_VERSION = 3
+const REELS_VERSION = 4
 
 const SEED_VERSION = 3
 
