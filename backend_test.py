@@ -9,7 +9,7 @@ import sys
 from typing import Dict, Any
 
 # Base URL from .env
-BASE_URL = "https://c31ecce2-b7f5-4688-a9d9-6f7bdf63635f.preview.emergentagent.com/api"
+BASE_URL = "https://share-my-day.preview.emergentagent.com/api"
 
 class TestRunner:
     def __init__(self):
