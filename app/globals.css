@@ -156,11 +156,24 @@
   }
 }
 
+/* Accrochage vertical de la page elle-même : posé sur <html> par le feed des
+   reels en mobile, où c'est le document qui défile (et non un conteneur
+   imbriqué). En « proximity », le reel se cale sous le header quand on
+   l'approche, sans jamais piéger le défilement d'un reel plus haut que
+   l'écran. Retiré dès qu'on quitte la vue. */
+.dz-snap-page {
+  scroll-snap-type: y proximity;
+}
+
 /* Respect de prefers-reduced-motion : pas d'animation de comptage,
-   pas de soulèvement de carte, pas de scroll animé. */
+   pas de soulèvement de carte, pas de scroll animé, pas d'accrochage. */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .dz-snap-page {
+    scroll-snap-type: none;
   }
 
   *,

@@ -930,6 +930,8 @@ const ReelsView = ({ lang, nav, slug }) => {
   const [feedMode, setFeedMode] = useState(false)
   const containerRef = useRef(null)
   const itemRefs = useRef([])
+  // Les lecteurs 9:16 : c'est leur visibilité qui décide du reel actif.
+  const playerRefs = useRef([])
 
   useEffect(() => {
     fetch('/api/reels')
@@ -946,6 +948,16 @@ const ReelsView = ({ lang, nav, slug }) => {
     return () => mq.removeEventListener('change', apply)
   }, [])
 
+  // Mobile : c'est le document qui défile, on lui donne donc l'accrochage
+  // vertical le temps de la vue pour que chaque reel se cale sous le header.
+  // Desktop : l'accrochage vit sur le conteneur du feed, rien à poser ici.
+  useEffect(() => {
+    if (feedMode || !reels.length) return
+    const root = document.documentElement
+    root.classList.add('dz-snap-page')
+    return () => root.classList.remove('dz-snap-page')
+  }, [feedMode, reels.length])
+
   // Lien profond : #/reels/{slug} ouvre directement le bon reel.
   useEffect(() => {
     if (!reels.length || !slug) return
@@ -956,25 +968,37 @@ const ReelsView = ({ lang, nav, slug }) => {
     }
   }, [reels, slug])
 
-  // La vidéo active est celle qui occupe le viewport. En feed desktop la
-  // référence est le conteneur défilant ; en mobile c'est le viewport, et on
-  // vise la bande centrale de l'écran car un reel peut y être plus haut que lui.
+  // Le reel actif — le seul dont l'iframe est montée — est celui dont le
+  // lecteur est le plus visible. On observe les lecteurs et non les sections :
+  // en mobile une section (vidéo + panneau) dépasse la hauteur d'écran, et
+  // c'est bien la vidéo qu'on regarde qui doit jouer. Le maximum est pris sur
+  // l'ensemble des ratios connus, sinon le dernier événement reçu — souvent
+  // celui du lecteur qui sort de l'écran — l'emporterait.
   useEffect(() => {
     if (!reels.length) return
+    const ratios = new Map()
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting) {
-            const i = Number(e.target.dataset.index)
-            if (!Number.isNaN(i)) setActive(i)
-          }
+          const i = Number(e.target.dataset.index)
+          if (!Number.isNaN(i)) ratios.set(i, e.isIntersecting ? e.intersectionRatio : 0)
         })
+        let best = -1
+        let bestRatio = 0
+        ratios.forEach((ratio, i) => {
+          if (ratio > bestRatio) { bestRatio = ratio; best = i }
+        })
+        if (best >= 0) setActive(best)
       },
-      feedMode
-        ? { root: containerRef.current, threshold: 0.6 }
-        : { root: null, rootMargin: '-35% 0px -35% 0px', threshold: 0 }
+      {
+        // Desktop : le conteneur du feed défile. Mobile : le viewport, dont on
+        // retire la hauteur du header sticky qui recouvre le haut de l'écran.
+        root: feedMode ? containerRef.current : null,
+        rootMargin: feedMode ? '0px' : '-72px 0px 0px 0px',
+        threshold: [0, 0.2, 0.4, 0.6, 0.8, 1],
+      }
     )
-    itemRefs.current.filter(Boolean).forEach((n) => observer.observe(n))
+    playerRefs.current.filter(Boolean).forEach((n) => observer.observe(n))
     return () => observer.disconnect()
   }, [reels, feedMode])
 
@@ -1030,17 +1054,26 @@ const ReelsView = ({ lang, nav, slug }) => {
             data-index={i}
             data-testid={`reel-${reel.slug}`}
             ref={(n) => { itemRefs.current[i] = n }}
-            // scroll-mt : le header sticky (72px) ne doit pas recouvrir le haut
-            // de la vidéo quand on arrive par lien profond ou par les flèches.
+            // snap-start : chaque reel se cale en haut de la zone défilante
+            // (page en mobile, conteneur en desktop) pour que la vidéo prenne
+            // le cadrage. scroll-mt : le header sticky (72px) ne doit pas en
+            // recouvrir le haut, ni à l'accrochage, ni par lien profond, ni par
+            // les flèches préc./suiv.
             // Filet de séparation entre reels, utile seulement en flux mobile.
-            className={`flex scroll-mt-[72px] flex-col items-center justify-center px-5 pb-14 pt-6 md:px-11 lg:h-full lg:snap-start lg:scroll-mt-0 lg:pb-6 ${
+            className={`flex snap-start scroll-mt-[72px] flex-col items-center justify-center px-5 pb-14 pt-6 md:px-11 lg:h-full lg:scroll-mt-0 lg:pb-6 ${
               i > 0 ? 'shadow-dz-rule-t lg:shadow-none' : ''
             }`}
           >
             <div className="flex w-full max-w-dz flex-col items-center gap-7 lg:h-full lg:flex-row lg:justify-center lg:gap-16">
               {/* Lecteur 9:16 : en mobile la largeur découle de la hauteur
-                  d'écran disponible, pour rester entier sans déborder. */}
-              <div className="relative aspect-[9/16] w-full max-w-[min(100%,max(240px,calc(62svh*9/16)))] shrink-0 overflow-hidden rounded-dz-card bg-dz-ink shadow-dz-card lg:h-full lg:w-auto lg:max-w-full lg:shrink">
+                  d'écran disponible (70svh, soit l'écran moins le header, sa
+                  marge et l'amorce du titre), pour que le reel cadré occupe
+                  l'écran tout en restant entier. */}
+              <div
+                data-index={i}
+                ref={(n) => { playerRefs.current[i] = n }}
+                className="relative aspect-[9/16] w-full max-w-[min(100%,max(240px,calc(70svh*9/16)))] shrink-0 overflow-hidden rounded-dz-card bg-dz-ink shadow-dz-card lg:h-full lg:w-auto lg:max-w-full lg:shrink"
+              >
                 {isActive && video.embed ? (
                   <iframe
                     src={video.embed}
