@@ -479,7 +479,7 @@ async function requireAdmin(request, database) {
 // Ensemencement versionné et idempotent des données de démonstration
 // communautaires. Verrou intra-processus (comme les reels) pour éviter les
 // doublons quand plusieurs requêtes /api arrivent en parallèle.
-const COMMUNITY_VERSION = 2
+const COMMUNITY_VERSION = 3
 const daysAgoISO = (d) => new Date(Date.now() - (d || 0) * 86400000).toISOString()
 let communitySeeding = null
 function seedCommunityIfEmpty(database) {
