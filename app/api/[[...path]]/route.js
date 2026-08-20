@@ -249,7 +249,7 @@ const SEED_REELS = [
 
 // Version du jeu de reels : incrémenter pour forcer un ré-ensemencement propre
 // (efface les anciens reels de démo et réinsère SEED_REELS).
-const REELS_VERSION = 4
+const REELS_VERSION = 5
 
 // ============ ENRICHISSEMENT FICHE PRODUIT (contenu de démonstration) ============
 // Références d'études par ingrédient : quelques liens réels pour les actifs
@@ -344,8 +344,15 @@ async function seedReelsIfEmpty(database) {
     { upsert: true, returnDocument: 'before' }
   )
   const currentVersion = before && typeof before.version === 'number' ? before.version : 0
-  const count = await database.collection('reels').countDocuments()
-  if (count > 0 && currentVersion >= REELS_VERSION) return
+  const existing = await database.collection('reels').find({}, { projection: { slug: 1, video_url: 1, _id: 0 } }).toArray()
+  const count = existing.length
+  // Auto-réparation : anciens slugs de démo (versions précédentes) présents en base,
+  // ou plusieurs reels pointant vers la même URL placeholder => on force le ré-ensemencement.
+  const OLD_DEMO_SLUGS = ['retinol-par-ou-commencer', 'lire-une-liste-inci', 'ph-5-5-pourquoi', 'thiamidol-taches-pigmentaires', 'biotine-chute-de-cheveux', 'peau-sensible-reactive']
+  const hasStaleSlug = existing.some((r) => OLD_DEMO_SLUGS.includes(r.slug))
+  const distinctUrls = new Set(existing.map((r) => r.video_url))
+  const looksPlaceholder = count > 1 && distinctUrls.size === 1
+  if (count > 0 && currentVersion >= REELS_VERSION && !hasStaleSlug && !looksPlaceholder) return
   const now = new Date().toISOString()
   await database.collection('reels').deleteMany({})
   await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
