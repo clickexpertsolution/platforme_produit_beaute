@@ -305,6 +305,12 @@ html[dir='rtl'] .uppercase:not(.dz-kw) {
 [dir='rtl'] .ml-2 { margin-left: 0; margin-right: 0.5rem; }
 [dir='rtl'] .ml-auto { margin-left: 0; margin-right: auto; }
 
+/* Le header est verrouillé en LTR (le sélecteur de langue conserve sa place à
+   droite même en arabe). Il faut donc annuler le miroir RTL de `ml-auto` à
+   l'intérieur : sinon le groupe langue/CTA/menu est repoussé à gauche et laisse
+   un vide à droite. Spécificité renforcée pour battre la règle générale ci-dessus. */
+html[dir='rtl'] header .ml-auto { margin-left: auto; margin-right: 0; }
+
 [dir='rtl'] .pl-5 { padding-left: 0; padding-right: 1.25rem; }
 [dir='rtl'] .pl-6 { padding-left: 0; padding-right: 1.5rem; }
 [dir='rtl'] .pl-9 { padding-left: 0; padding-right: 2.25rem; }
