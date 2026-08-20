@@ -307,8 +307,8 @@ const Header = ({ lang, setLang, nav, route }) => {
     { v: 'compare', fr: 'Comparer', en: 'Compare', ar: 'قارن' },
   ]
   const utilityItems = [
-    // « Reels » n'a pas d'équivalent arabe usuel : il reste tel quel, en pastille.
-    { v: 'reels', fr: 'Reels', en: 'Reels', ar: '[[Reels]]' },
+    // « Reels » traduit en arabe par la translittération usuelle « ريلز ».
+    { v: 'reels', fr: 'Reels', en: 'Reels', ar: 'ريلز' },
     { v: 'learn', fr: 'Guides', en: 'Guides', ar: 'أدلّة' },
     { v: 'for-brands', fr: 'Pour les marques', en: 'For Brands', ar: 'للعلامات التجارية' },
   ]
@@ -3456,10 +3456,10 @@ function App() {
       brands: { fr: 'Marques — Dermalyze', en: 'Brands — Dermalyze', ar: 'العلامات التجارية — Dermalyze' },
       'german-brands': { fr: 'Marques allemandes — Dermalyze', en: 'German brands — Dermalyze', ar: 'العلامات الألمانية — Dermalyze' },
       compare: { fr: 'Comparateur — Dermalyze', en: 'Compare — Dermalyze', ar: 'أداة المقارنة — Dermalyze' },
-      finder: { fr: 'Product Finder — Dermalyze', en: 'Product Finder — Dermalyze', ar: 'Product Finder — Dermalyze' },
+      finder: { fr: 'Product Finder — Dermalyze', en: 'Product Finder — Dermalyze', ar: 'اعثر على منتجك — Dermalyze' },
       hubs: { fr: 'Conseils par préoccupation — Dermalyze', en: 'Advice by concern — Dermalyze', ar: 'نصائح حسب المشكلة — Dermalyze' },
       learn: { fr: 'Learn & Guides — Dermalyze', en: 'Learn & Guides — Dermalyze', ar: 'التعلّم والأدلّة — Dermalyze' },
-      reels: { fr: 'Reels — La science de la peau en 60 secondes — Dermalyze', en: 'Reels — Skin science in 60 seconds — Dermalyze', ar: 'Reels — علم البشرة في 60 ثانية — Dermalyze' },
+      reels: { fr: 'Reels — La science de la peau en 60 secondes — Dermalyze', en: 'Reels — Skin science in 60 seconds — Dermalyze', ar: 'ريلز — علم البشرة في 60 ثانية — Dermalyze' },
       'for-brands': { fr: 'Pour les marques — Entrer sur le marché MENA — Dermalyze', en: 'For brands — Enter the MENA market — Dermalyze', ar: 'للعلامات التجارية — دخول سوق الشرق الأوسط وشمال إفريقيا — Dermalyze' },
       routine: { fr: 'Routine partagée — Dermalyze', en: 'Shared routine — Dermalyze', ar: 'روتين مُشارَك — Dermalyze' },
     }

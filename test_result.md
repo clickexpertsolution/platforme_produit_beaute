@@ -630,3 +630,16 @@ frontend:
 agent_communication:
   - agent: "main"
     message: "Frontend-only change (language selector UX + RTL position stability). Verified visually with Playwright screenshots (desktop dropdown, Arabic RTL position, mobile segmented control). No backend change. Awaiting user decision on whether to run automated frontend testing."
+
+frontend:
+  - task: "Arabic keyword translation: 3 terms that were rendered as untranslated Latin pills in AR mode (Product Finder, Reels, Back-office) are now fully translated site-wide. Updated lib/i18n.js AR dictionary: 'Product Finder'→'اعثر على منتجك', 'Reels'→'ريلز', 'Back-office'→'لوحة التحكم' (removed [[…]] keyword markers); 'Lancer le Product Finder'→'ابدأ البحث عن منتجك'. Updated header reels nav item ar to 'ريلز', and finder/reels page <title> AR strings."
+    implemented: true
+    working: true
+    file: "lib/i18n.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Verified via screenshot (footer, AR/RTL): 'أدوات' section shows اعثر على منتجك / أداة المقارنة / نصائح / التعلّم والأدلّة / ريلز; 'للمحترفين' shows للعلامات التجارية / لوحة التحكم. Header nav shows ريلز. No Latin keyword pills remain for these 3 terms."
