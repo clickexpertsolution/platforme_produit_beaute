@@ -181,7 +181,66 @@ const ALL_BRANDS = [...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] 
 const ALL_INGREDIENTS = [...SEED_INGREDIENTS, ...NEW_INGREDIENTS]
 const ALL_PRODUCTS = [...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS]
 
-const SEED_VERSION = 3
+
+// ============ REELS / SHORTS ============
+// Vidéos verticales courtes (format Shorts / Reels), embarquées depuis une
+// plateforme externe. `video_url` est l'URL d'origine collée au back-office ;
+// le provider et l'identifiant en sont dérivés côté client.
+//
+// ATTENTION — contenu de démonstration : toutes les entrées pointent vers
+// l'URL de référence fournie au cadrage. Chaque reel doit recevoir l'URL de
+// sa propre vidéo avant mise en production.
+const REEL_PLACEHOLDER_URL = 'https://youtube.com/shorts/I1nvw5Y0sBM'
+
+const SEED_REELS = [
+  {
+    slug: 'retinol-par-ou-commencer', video_url: REEL_PLACEHOLDER_URL, duration_s: 48,
+    vertical: 'skincare', ingredient_slug: 'retinol', published_at: '2025-06-18',
+    title: { fr: 'Rétinol : par où commencer', en: 'Retinol: where to start' },
+    caption: {
+      fr: "Une à deux applications par semaine, le soir, sur peau sèche. On augmente seulement quand la peau ne tiraille plus.",
+      en: 'Once or twice a week, at night, on dry skin. Increase only once your skin stops feeling tight.',
+    },
+  },
+  {
+    slug: 'lire-une-liste-inci', video_url: REEL_PLACEHOLDER_URL, duration_s: 55,
+    vertical: 'skincare', published_at: '2025-06-22',
+    title: { fr: 'Lire une liste INCI en 30 secondes', en: 'Read an INCI list in 30 seconds' },
+    caption: {
+      fr: "Les cinq premiers ingrédients représentent souvent plus de 80% de la formule. Le reste se joue sous la barre des 1%.",
+      en: 'The first five ingredients often make up over 80% of the formula. The rest plays out below the 1% mark.',
+    },
+  },
+  {
+    slug: 'ph-5-5-pourquoi', video_url: REEL_PLACEHOLDER_URL, duration_s: 41,
+    vertical: 'skincare', product_slug: 'sebamed-clear-face-gel', published_at: '2025-06-29',
+    title: { fr: 'Pourquoi le pH 5.5 change tout', en: 'Why pH 5.5 changes everything' },
+    caption: {
+      fr: "Le manteau acide de la peau tourne autour de 5.5. Un nettoyant trop alcalin le décape et fragilise la barrière.",
+      en: "The skin's acid mantle sits around 5.5. An overly alkaline cleanser strips it and weakens the barrier.",
+    },
+  },
+  {
+    slug: 'thiamidol-taches-pigmentaires', video_url: REEL_PLACEHOLDER_URL, duration_s: 52,
+    vertical: 'skincare', product_slug: 'nivea-luminous630-serum', published_at: '2025-07-04',
+    title: { fr: 'Taches pigmentaires : ce qui marche', en: 'Dark spots: what actually works' },
+    caption: {
+      fr: "Thiamidol et Luminous630 sortent de la recherche Beiersdorf. Comptez quatre semaines avant de juger un résultat.",
+      en: 'Thiamidol and Luminous630 come out of Beiersdorf research. Give it four weeks before judging results.',
+    },
+  },
+  {
+    slug: 'biotine-chute-de-cheveux', video_url: REEL_PLACEHOLDER_URL, duration_s: 46,
+    vertical: 'hair', ingredient_slug: 'biotine', published_at: '2025-07-11',
+    title: { fr: 'Biotine : utile ou marketing ?', en: 'Biotin: useful or marketing?' },
+    caption: {
+      fr: "La supplémentation n'a d'effet démontré qu'en cas de carence avérée. Sans déficit, le bénéfice reste théorique.",
+      en: 'Supplementation has proven effects only in cases of actual deficiency. Without one, the benefit stays theoretical.',
+    },
+  },
+]
+
+const SEED_VERSION = 4
 
 async function seedIfEmpty(database) {
   const before = await database.collection('meta').findOneAndUpdate(
@@ -191,12 +250,13 @@ async function seedIfEmpty(database) {
   )
   if (before && before.version >= SEED_VERSION) return
   const now = new Date().toISOString()
-  await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs'].map((c) => database.collection(c).deleteMany({})))
+  await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs', 'reels'].map((c) => database.collection(c).deleteMany({})))
   await database.collection('brands').insertMany(ALL_BRANDS.map((b) => ({ ...b, id: uuidv4(), created_at: now })))
   await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, id: uuidv4(), created_at: now })))
   await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({ ...p, id: uuidv4(), created_at: now })))
   await database.collection('articles').insertMany(SEED_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
+  await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
 }
 
 async function requireAdmin(request, database) {
@@ -206,7 +266,7 @@ async function requireAdmin(request, database) {
   return await database.collection('sessions').findOne({ token })
 }
 
-const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hubs']
+const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hubs', 'reels']
 
 // ============ INGREDIENT CONFLICT RULES ============
 const INGREDIENT_CONFLICTS = [
@@ -375,6 +435,22 @@ export async function GET(request, { params }) {
       if (q.all !== '1') filter.status = { $ne: 'draft' }
       const articles = await database.collection('articles').find(filter, NOID).sort({ published_at: -1 }).toArray()
       return json({ articles, total: articles.length })
+    }
+
+    // ---- REELS ----
+    if (path[0] === 'reels') {
+      if (path[1]) {
+        const reel = await database.collection('reels').findOne({ slug: path[1] }, NOID)
+        if (!reel) return json({ error: 'Reel not found' }, 404)
+        return json(reel)
+      }
+      const filter = {}
+      if (q.vertical) filter.vertical = q.vertical
+      if (q.product_slug) filter.product_slug = q.product_slug
+      if (q.ingredient_slug) filter.ingredient_slug = q.ingredient_slug
+      if (q.all !== '1') filter.status = { $ne: 'draft' }
+      const reels = await database.collection('reels').find(filter, NOID).sort({ published_at: -1 }).toArray()
+      return json({ reels, total: reels.length })
     }
 
     // ---- COMPARE ----

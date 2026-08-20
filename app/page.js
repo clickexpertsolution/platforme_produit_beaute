@@ -17,7 +17,7 @@ import {
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
   BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail,
   Scissors, HeartPulse, Factory, BadgeCheck, HelpCircle, ShoppingBag, ListChecks,
-  Share2, Copy
+  Share2, Copy, Play, ChevronUp, ChevronDown
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -199,6 +199,7 @@ const Header = ({ lang, setLang, nav, route }) => {
     { v: 'compare', fr: 'Comparer', en: 'Compare' },
   ]
   const utilityItems = [
+    { v: 'reels', fr: 'Reels', en: 'Reels' },
     { v: 'learn', fr: 'Guides', en: 'Guides' },
     { v: 'for-brands', fr: 'Pour les marques', en: 'For Brands' },
   ]
@@ -366,7 +367,7 @@ const StatsBand = ({ stats, lang }) => {
   )
 }
 
-const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
+const HomeView = ({ lang, nav, products, ingredients, brands, articles, reels = [] }) => {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
 
@@ -541,6 +542,8 @@ const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
         </Container>
       </section>
 
+      <ReelsRail reels={reels} lang={lang} nav={nav} />
+
       {/* ---------- 5. Ingrédients décryptés (handoff §6) ---------- */}
       <section id="ingredients">
         <Container className="pt-20 md:pt-32">
@@ -696,6 +699,290 @@ const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
           </div>
         </Container>
       </section>
+    </div>
+  )
+}
+
+// ---------- Reels / Shorts ----------
+// Les vidéos sont hébergées chez un tiers : on ne stocke qu'une URL et on en
+// dérive le provider, l'iframe d'embed et la vignette.
+const parseVideoUrl = (url = '') => {
+  const u = String(url || '')
+  let m
+  if ((m = u.match(/(?:youtube\.com\/(?:shorts\/|watch\?v=|embed\/)|youtu\.be\/)([\w-]{6,})/))) {
+    const id = m[1]
+    return {
+      provider: 'youtube',
+      id,
+      // autoplay muet + boucle : le seul mode de lecture automatique accepté par les navigateurs
+      embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=1&rel=0&playsinline=1&modestbranding=1`,
+      thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      watch: `https://www.youtube.com/shorts/${id}`,
+    }
+  }
+  if ((m = u.match(/instagram\.com\/(?:reels?|p)\/([\w-]+)/))) {
+    const id = m[1]
+    return { provider: 'instagram', id, embed: `https://www.instagram.com/reel/${id}/embed/`, thumbnail: null, watch: u }
+  }
+  if ((m = u.match(/tiktok\.com\/.*\/video\/(\d+)/))) {
+    const id = m[1]
+    return { provider: 'tiktok', id, embed: `https://www.tiktok.com/embed/v2/${id}`, thumbnail: null, watch: u }
+  }
+  return { provider: null, id: null, embed: null, thumbnail: null, watch: u || null }
+}
+
+const formatDuration = (s) => {
+  if (!s && s !== 0) return null
+  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+}
+
+// Libellé de l'entité liée (produit ou ingrédient), pour le CTA sous la vidéo.
+const reelLink = (reel) => {
+  if (reel.product_slug) return { view: 'product', slug: reel.product_slug }
+  if (reel.ingredient_slug) return { view: 'ingredient', slug: reel.ingredient_slug }
+  return null
+}
+
+// Carte verticale 9:16 du rail d'accueil.
+const ReelCard = ({ reel, lang, onOpen }) => {
+  const video = parseVideoUrl(reel.video_url)
+  const duration = formatDuration(reel.duration_s)
+  return (
+    <button
+      data-testid={`reel-card-${reel.slug}`}
+      onClick={() => onOpen(reel.slug)}
+      aria-label={reel.title?.[lang]}
+      className="group relative aspect-[9/16] w-[220px] shrink-0 snap-start overflow-hidden rounded-dz-card bg-dz-ink text-left shadow-dz-card transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-dz-card-hover md:w-[248px]"
+    >
+      {video.thumbnail ? (
+        <img src={video.thumbnail} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <span className="dz-placeholder absolute inset-0 block" />
+      )}
+      {/* Dégradé pour garder le texte lisible quelle que soit la vignette */}
+      <span className="absolute inset-0 bg-gradient-to-t from-dz-ink/85 via-dz-ink/15 to-dz-ink/5" />
+
+      <span className="absolute left-4 right-4 top-4 flex items-center justify-between">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 transition-transform duration-300 group-hover:scale-110">
+          <Play className="h-3.5 w-3.5 fill-dz-ink text-dz-ink" />
+        </span>
+        {duration && (
+          <Mono className="rounded-dz-pill bg-dz-ink/70 px-2 py-1 text-[9.5px] tracking-[0.1em] text-white">{duration}</Mono>
+        )}
+      </span>
+
+      <span className="absolute inset-x-0 bottom-0 block p-4">
+        <span className="line-clamp-3 block font-display text-[20px] leading-[1.15] tracking-[-0.015em] text-white text-pretty">
+          {reel.title?.[lang]}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+// Rail horizontal de la page d'accueil.
+const ReelsRail = ({ reels, lang, nav }) => {
+  if (!reels.length) return null
+  return (
+    <section id="reels">
+      <Container className="pt-20 md:pt-32">
+        <SectionHead
+          title={lang === 'fr' ? 'En 60 secondes' : 'In 60 seconds'}
+          sub={lang === 'fr' ? 'La science de la peau, format court' : 'Skin science, short form'}
+          action={lang === 'fr' ? 'Tout voir' : 'View all'}
+          onAction={() => nav('reels')}
+          testId="home-reels-all"
+        />
+        <div className="-mx-5 flex snap-x snap-mandatory gap-[22px] overflow-x-auto px-5 pb-4 md:-mx-11 md:px-11"
+          style={{ scrollbarWidth: 'thin' }}>
+          {reels.map((r) => <ReelCard key={r.slug} reel={r} lang={lang} onOpen={(s) => nav('reels', s)} />)}
+        </div>
+      </Container>
+    </section>
+  )
+}
+
+// ---------- Reels feed (route /reels) ----------
+// Feed vertical plein écran : défilement par à-coups (scroll snap), seule la
+// vidéo visible est montée en iframe, navigation clavier et lien profond.
+const ReelsView = ({ lang, nav, slug }) => {
+  const [reels, setReels] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [active, setActive] = useState(0)
+  const containerRef = useRef(null)
+  const itemRefs = useRef([])
+
+  useEffect(() => {
+    fetch('/api/reels')
+      .then((r) => r.json())
+      .then((d) => { setReels(d.reels || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  // Lien profond : #/reels/{slug} ouvre directement le bon reel.
+  useEffect(() => {
+    if (!reels.length || !slug) return
+    const i = reels.findIndex((r) => r.slug === slug)
+    if (i >= 0) {
+      setActive(i)
+      itemRefs.current[i]?.scrollIntoView({ block: 'start' })
+    }
+  }, [reels, slug])
+
+  // La vidéo active est celle qui occupe le viewport.
+  useEffect(() => {
+    if (!reels.length) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            const i = Number(e.target.dataset.index)
+            if (!Number.isNaN(i)) setActive(i)
+          }
+        })
+      },
+      { root: containerRef.current, threshold: 0.6 }
+    )
+    itemRefs.current.filter(Boolean).forEach((n) => observer.observe(n))
+    return () => observer.disconnect()
+  }, [reels])
+
+  const goTo = useCallback((i) => {
+    const next = Math.max(0, Math.min(i, itemRefs.current.length - 1))
+    itemRefs.current[next]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (['ArrowDown', 'j', 'PageDown'].includes(e.key)) { e.preventDefault(); goTo(active + 1) }
+      if (['ArrowUp', 'k', 'PageUp'].includes(e.key)) { e.preventDefault(); goTo(active - 1) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, goTo])
+
+  if (loading) {
+    return (
+      <Container className="py-20">
+        <Skeleton className="mx-auto aspect-[9/16] w-full max-w-[380px] rounded-dz-card" />
+      </Container>
+    )
+  }
+
+  if (!reels.length) {
+    return (
+      <Container className="py-24 text-center">
+        <h1 className="font-display text-[32px] tracking-[-0.02em]">{lang === 'fr' ? 'Reels' : 'Reels'}</h1>
+        <p data-testid="reels-empty" className="mt-3 text-[14.5px] font-light text-dz-text-2">
+          {lang === 'fr' ? 'Aucune vidéo publiée pour le moment.' : 'No video published yet.'}
+        </p>
+      </Container>
+    )
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid="reels-feed"
+      className="h-[calc(100dvh-72px)] snap-y snap-mandatory overflow-y-auto overscroll-contain"
+    >
+      {reels.map((reel, i) => {
+        const video = parseVideoUrl(reel.video_url)
+        const link = reelLink(reel)
+        const duration = formatDuration(reel.duration_s)
+        const isActive = i === active
+        return (
+          <section
+            key={reel.slug}
+            data-index={i}
+            data-testid={`reel-${reel.slug}`}
+            ref={(n) => { itemRefs.current[i] = n }}
+            className="flex h-full snap-start items-center justify-center px-5 py-6 md:px-11"
+          >
+            <div className="flex h-full w-full max-w-dz flex-col items-center gap-8 lg:flex-row lg:justify-center lg:gap-16">
+              {/* Lecteur 9:16 */}
+              <div className="relative aspect-[9/16] h-full max-h-full w-auto max-w-full shrink overflow-hidden rounded-dz-card bg-dz-ink shadow-dz-card">
+                {isActive && video.embed ? (
+                  <iframe
+                    src={video.embed}
+                    title={reel.title?.[lang] || reel.slug}
+                    className="absolute inset-0 h-full w-full"
+                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                ) : video.thumbnail ? (
+                  <img src={video.thumbnail} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                  <span className="dz-placeholder absolute inset-0 block" />
+                )}
+                {!video.embed && (
+                  <span className="absolute inset-x-0 bottom-0 bg-dz-ink/80 p-4">
+                    <Mono className="text-[9.5px] tracking-[0.1em] text-white">
+                      {lang === 'fr' ? 'source vidéo non reconnue' : 'unrecognized video source'}
+                    </Mono>
+                  </span>
+                )}
+              </div>
+
+              {/* Panneau éditorial */}
+              <div className="w-full max-w-[420px] shrink-0">
+                <div className="mb-4 flex items-center gap-4">
+                  <Mono className="text-[10.5px] tracking-[0.16em] text-dz-text-4">
+                    {String(i + 1).padStart(2, '0')} / {String(reels.length).padStart(2, '0')}
+                  </Mono>
+                  {duration && <Mono className="text-[10.5px] tracking-[0.1em] text-dz-text-4">{duration}</Mono>}
+                </div>
+
+                <h1 className="m-0 mb-4 font-display text-[30px] leading-[1.08] tracking-[-0.02em] text-balance md:text-[38px]">
+                  {reel.title?.[lang]}
+                </h1>
+                <p className="m-0 text-[15px] font-light leading-[1.6] text-dz-text-2">{reel.caption?.[lang]}</p>
+
+                <div className="mt-7 flex flex-wrap items-center gap-3">
+                  {link && (
+                    <button
+                      data-testid={`reel-cta-${reel.slug}`}
+                      onClick={() => nav(link.view, link.slug)}
+                      className="rounded-dz-pill bg-dz-accent px-6 py-3 text-[14px] font-medium text-white transition-colors duration-250 hover:bg-dz-accent-hover"
+                    >
+                      {link.view === 'product'
+                        ? (lang === 'fr' ? 'Voir le produit' : 'View product')
+                        : (lang === 'fr' ? "Voir l'ingrédient" : 'View ingredient')}
+                    </button>
+                  )}
+                  {video.watch && (
+                    <a
+                      href={video.watch} target="_blank" rel="noopener noreferrer"
+                      className="rounded-dz-pill px-5 py-3 text-[13px] text-dz-text shadow-dz-chip transition-all duration-200 hover:text-dz-accent hover:shadow-dz-chip-accent"
+                    >
+                      {lang === 'fr' ? 'Ouvrir la source' : 'Open source'} ↗
+                    </a>
+                  )}
+                </div>
+
+                {/* Navigation du feed */}
+                <div className="mt-8 flex items-center gap-2">
+                  <button
+                    data-testid="reel-prev" onClick={() => goTo(i - 1)} disabled={i === 0}
+                    aria-label={lang === 'fr' ? 'Vidéo précédente' : 'Previous video'}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-dz-surface shadow-dz-card transition-colors duration-200 hover:text-dz-accent disabled:opacity-40"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    data-testid="reel-next" onClick={() => goTo(i + 1)} disabled={i === reels.length - 1}
+                    aria-label={lang === 'fr' ? 'Vidéo suivante' : 'Next video'}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-dz-surface shadow-dz-card transition-colors duration-200 hover:text-dz-accent disabled:opacity-40"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )
+      })}
     </div>
   )
 }
@@ -2032,6 +2319,20 @@ const ADMIN_FIELDS = {
     { path: 'regulatory.fr', label: 'Contexte réglementaire FR', type: 'textarea' },
     { path: 'regulatory.en', label: 'Contexte réglementaire EN', type: 'textarea' },
   ],
+  reels: [
+    { path: 'slug', label: 'Slug', type: 'text' },
+    { path: 'video_url', label: 'URL de la vidéo (YouTube Shorts / Instagram Reels / TikTok)', type: 'text' },
+    { path: 'duration_s', label: 'Durée (secondes)', type: 'number' },
+    { path: 'vertical', label: 'Univers (skincare/hair/wellness)', type: 'text' },
+    { path: 'product_slug', label: 'Produit lié (slug) — optionnel', type: 'text' },
+    { path: 'ingredient_slug', label: 'Ingrédient lié (slug) — optionnel', type: 'text' },
+    { path: 'status', label: 'Statut (draft/published)', type: 'text' },
+    { path: 'published_at', label: 'Date (YYYY-MM-DD)', type: 'text' },
+    { path: 'title.fr', label: 'Titre FR', type: 'text' },
+    { path: 'title.en', label: 'Titre EN', type: 'text' },
+    { path: 'caption.fr', label: 'Légende FR', type: 'textarea' },
+    { path: 'caption.en', label: 'Légende EN', type: 'textarea' },
+  ],
   articles: [
     { path: 'slug', label: 'Slug', type: 'text' },
     { path: 'category', label: 'Catégorie (learn/guide/research/how-to)', type: 'text' },
@@ -2334,6 +2635,7 @@ const AdminView = ({ lang }) => {
           <TabsTrigger data-testid="admin-tab-ingredients" value="ingredients">{lang === 'fr' ? 'Ingrédients' : 'Ingredients'}</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-articles" value="articles">Articles</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-hubs" value="hubs">Hubs</TabsTrigger>
+          <TabsTrigger data-testid="admin-tab-reels" value="reels">Reels</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-leads" value="leads">Leads</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-subscribers" value="subscribers">{lang === 'fr' ? 'Abonnés' : 'Subscribers'}</TabsTrigger>
         </TabsList>
@@ -2342,6 +2644,7 @@ const AdminView = ({ lang }) => {
         <TabsContent value="ingredients" className="mt-4"><AdminCrud entity="ingredients" token={token} lang={lang} /></TabsContent>
         <TabsContent value="articles" className="mt-4"><AdminCrud entity="articles" token={token} lang={lang} /></TabsContent>
         <TabsContent value="hubs" className="mt-4"><AdminCrud entity="hubs" token={token} lang={lang} /></TabsContent>
+        <TabsContent value="reels" className="mt-4"><AdminCrud entity="reels" token={token} lang={lang} /></TabsContent>
         <TabsContent value="leads" className="mt-4">
           <div className="border border-dz-rule rounded-lg overflow-hidden divide-y divide-dz-rule-card">
             {leads.length === 0 && <p className="p-4 text-sm text-dz-text-4">{lang === 'fr' ? 'Aucun lead pour le moment.' : 'No leads yet.'}</p>}
@@ -2408,6 +2711,7 @@ const Footer = ({ lang, nav }) => {
         ['compare', lang === 'fr' ? 'Comparateur' : 'Compare'],
         ['hubs', lang === 'fr' ? 'Conseils' : 'Advice'],
         ['learn', 'Learn & Guides'],
+        ['reels', 'Reels'],
       ],
     },
     {
@@ -2462,6 +2766,7 @@ function App() {
   const [ingredients, setIngredients] = useState([])
   const [brands, setBrands] = useState([])
   const [articles, setArticles] = useState([])
+  const [reels, setReels] = useState([])
   const [compareA, setCompareA] = useState('')
 
   const setLang = (l) => { setLangState(l); try { localStorage.setItem('lang', l) } catch {} }
@@ -2483,6 +2788,7 @@ function App() {
     fetch('/api/ingredients').then((r) => r.json()).then((d) => setIngredients(d.ingredients || []))
     fetch('/api/brands').then((r) => r.json()).then((d) => setBrands(d.brands || []))
     fetch('/api/articles').then((r) => r.json()).then((d) => setArticles(d.articles || []))
+    fetch('/api/reels').then((r) => r.json()).then((d) => setReels(d.reels || []))
   }, [])
 
   // Lightweight SEO: dynamic document title + meta description per route
@@ -2497,6 +2803,7 @@ function App() {
       finder: { fr: 'Product Finder — Dermalyze', en: 'Product Finder — Dermalyze' },
       hubs: { fr: 'Conseils par préoccupation — Dermalyze', en: 'Advice by concern — Dermalyze' },
       learn: { fr: 'Learn & Guides — Dermalyze', en: 'Learn & Guides — Dermalyze' },
+      reels: { fr: 'Reels — La science de la peau en 60 secondes — Dermalyze', en: 'Reels — Skin science in 60 seconds — Dermalyze' },
       'for-brands': { fr: 'Pour les marques — Entrer sur le marché MENA — Dermalyze', en: 'For brands — Enter the MENA market — Dermalyze' },
       routine: { fr: 'Routine partagée — Dermalyze', en: 'Shared routine — Dermalyze' },
     }
@@ -2524,7 +2831,7 @@ function App() {
     <div className="min-h-screen bg-dz-bg text-dz-ink">
       <Header lang={lang} setLang={setLang} nav={nav} route={route} />
       <main>
-        {v === 'home' && <HomeView lang={lang} nav={nav} products={products} ingredients={ingredients} brands={brands} articles={articles} />}
+        {v === 'home' && <HomeView lang={lang} nav={nav} products={products} ingredients={ingredients} brands={brands} articles={articles} reels={reels} />}
         {v === 'products' && <ProductsView lang={lang} nav={nav} initialFilters={route.extra} />}
         {v === 'product' && <ProductDetailView slug={route.param} lang={lang} nav={nav} setCompareA={setCompareA} />}
         {v === 'hubs' && <HubsView lang={lang} nav={nav} />}
@@ -2537,6 +2844,7 @@ function App() {
         {v === 'compare' && <CompareView lang={lang} nav={nav} products={products} compareA={compareA} setCompareA={setCompareA} />}
         {v === 'finder' && <FinderView lang={lang} nav={nav} />}
         {v === 'routine' && <SharedRoutineView id={route.param} lang={lang} nav={nav} />}
+        {v === 'reels' && <ReelsView lang={lang} nav={nav} slug={route.param} />}
         {v === 'learn' && <LearnView lang={lang} nav={nav} articles={articles} />}
         {v === 'article' && <ArticleDetailView slug={route.param} lang={lang} nav={nav} />}
         {v === 'for-brands' && <ForBrandsView lang={lang} />}
