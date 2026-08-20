@@ -19,8 +19,14 @@ Education-first discovery platform (not a classic shop) connecting MENA consumer
 - Frontend: vertical tabs on Products page, 3-universe home section with concern chips, brand manufacturer/certifications cards, ingredient regulatory box, admin fields updated.
 - Finder restricted to skincare (sends vertical:'skincare'); multi-vertical finder planned Étape 3.
 
-### 🔜 Étape 2 — Content hubs + CMS (NEXT)
-Hubs per concern (uses concern ids), articles CMS in admin (FR+EN, publish state), AI-assisted article generation via Emergent LLM key, ~15 demo articles.
+### ✅ Étape 2a — Content hubs (DONE, backend tested 67/67)
+- 15 hubs (1 par préoccupation : 6 skincare, 4 hair, 5 wellness), seed dans /app/lib/seed-hubs.js, SEED_VERSION=3.
+- Hub = title/definition/causes/mistakes/buying_guide (bilingue), key_ingredients, 3 FAQs bilingues, produits recommandés (par concern, triés par note), disclaimer médical.
+- Endpoints: GET /api/hubs (?vertical), GET /api/hubs/:slug. Admin CRUD hubs + stats.
+- Frontend: nav "Conseils", liste groupée par univers, page détail complète (accordéon FAQ shadcn), puces d'accueil → hubs. Admin: onglet Hubs (FAQ éditable en JSON).
+
+### 🔜 Étape 2b — CMS articles + génération IA (NEXT)
+Articles CMS déjà présents (admin), ajouter : génération assistée IA (Emergent LLM key), état publié/brouillon, ~15 articles démo, lien articles ↔ hubs.
 
 ### 🔜 Étape 3 — Conversion
 Affiliate links management, Product Finder extended to hair/wellness, newsletter signup + admin export.

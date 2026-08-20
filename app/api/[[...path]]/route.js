@@ -1,6 +1,7 @@
 import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
+import { SEED_HUBS } from '@/lib/seed-hubs'
 
 let client = null
 let db = null
@@ -159,7 +160,7 @@ const ALL_BRANDS = [...SEED_BRANDS.map((b) => ({ ...b, ...(BRAND_EXTRAS[b.slug] 
 const ALL_INGREDIENTS = [...SEED_INGREDIENTS, ...NEW_INGREDIENTS]
 const ALL_PRODUCTS = [...SEED_PRODUCTS.map((p) => ({ vertical: 'skincare', ...p })), ...NEW_PRODUCTS]
 
-const SEED_VERSION = 2
+const SEED_VERSION = 3
 
 async function seedIfEmpty(database) {
   const before = await database.collection('meta').findOneAndUpdate(
@@ -169,11 +170,12 @@ async function seedIfEmpty(database) {
   )
   if (before && before.version >= SEED_VERSION) return
   const now = new Date().toISOString()
-  await Promise.all(['brands', 'ingredients', 'products', 'articles'].map((c) => database.collection(c).deleteMany({})))
+  await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs'].map((c) => database.collection(c).deleteMany({})))
   await database.collection('brands').insertMany(ALL_BRANDS.map((b) => ({ ...b, id: uuidv4(), created_at: now })))
   await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, id: uuidv4(), created_at: now })))
   await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({ ...p, id: uuidv4(), created_at: now })))
   await database.collection('articles').insertMany(SEED_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
+  await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
 }
 
 async function requireAdmin(request, database) {
@@ -183,7 +185,7 @@ async function requireAdmin(request, database) {
   return await database.collection('sessions').findOne({ token })
 }
 
-const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles']
+const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hubs']
 
 // ============ INGREDIENT CONFLICT RULES ============
 const INGREDIENT_CONFLICTS = [
@@ -322,6 +324,23 @@ export async function GET(request, { params }) {
       return json({ brands, total: brands.length })
     }
 
+    // ---- HUBS (content hubs by concern) ----
+    if (path[0] === 'hubs') {
+      if (path[1]) {
+        const hub = await database.collection('hubs').findOne({ slug: path[1] }, NOID)
+        if (!hub) return json({ error: 'Hub not found' }, 404)
+        const [products, ingredientDetails] = await Promise.all([
+          database.collection('products').find({ concerns: path[1] }, NOID).sort({ rating: -1 }).toArray(),
+          database.collection('ingredients').find({ slug: { $in: hub.key_ingredients || [] } }, NOID).toArray(),
+        ])
+        return json({ ...hub, products, ingredient_details: ingredientDetails })
+      }
+      const filter = {}
+      if (q.vertical) filter.vertical = q.vertical
+      const hubs = await database.collection('hubs').find(filter, NOID).toArray()
+      return json({ hubs, total: hubs.length })
+    }
+
     // ---- ARTICLES ----
     if (path[0] === 'articles') {
       if (path[1]) {
@@ -355,14 +374,15 @@ export async function GET(request, { params }) {
         return json({ leads, total: leads.length })
       }
       if (path[1] === 'stats') {
-        const [products, brands, ingredients, articles, leads] = await Promise.all([
+        const [products, brands, ingredients, articles, leads, hubs] = await Promise.all([
           database.collection('products').countDocuments(),
           database.collection('brands').countDocuments(),
           database.collection('ingredients').countDocuments(),
           database.collection('articles').countDocuments(),
           database.collection('leads').countDocuments(),
+          database.collection('hubs').countDocuments(),
         ])
-        return json({ products, brands, ingredients, articles, leads })
+        return json({ products, brands, ingredients, articles, leads, hubs })
       }
       return json({ error: 'Not found' }, 404)
     }

@@ -10,11 +10,12 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
   BarChart3, Globe, MapPin, ExternalLink, Droplets, Sun, Moon, AlertTriangle, Beaker, Mail,
-  Scissors, HeartPulse, Factory, BadgeCheck
+  Scissors, HeartPulse, Factory, BadgeCheck, HelpCircle, ShoppingBag, ListChecks
 } from 'lucide-react'
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1585945037805-5fd82c2e60b1?crop=entropy&cs=srgb&fm=jpg&q=85'
@@ -127,6 +128,7 @@ const Header = ({ lang, setLang, nav, route }) => {
   const [open, setOpen] = useState(false)
   const items = [
     { v: 'products', fr: 'Produits', en: 'Products' },
+    { v: 'hubs', fr: 'Conseils', en: 'Advice' },
     { v: 'ingredients', fr: 'Ingrédients', en: 'Ingredients' },
     { v: 'brands', fr: 'Marques', en: 'Brands' },
     { v: 'german-brands', fr: 'Marques allemandes', en: 'German Brands' },
@@ -243,7 +245,7 @@ const HomeView = ({ lang, nav, products, ingredients, brands, articles }) => {
               </button>
               <div className="flex flex-wrap gap-1.5">
                 {CONCERNS.filter((c) => c.vertical === v.id).map((c) => (
-                  <button key={c.id} data-testid={`concern-${c.id}`} onClick={() => nav('products', null, { vertical: v.id, concern: c.id })}
+                  <button key={c.id} data-testid={`concern-${c.id}`} onClick={() => nav('hub', c.id)}
                     className="px-2.5 py-1 rounded-full border border-stone-200 text-xs font-medium text-stone-600 hover:border-emerald-700 hover:text-emerald-800 transition-colors">
                     {c[lang]}
                   </button>
@@ -1043,6 +1045,174 @@ const FinderView = ({ lang, nav }) => {
   )
 }
 
+// ---------- Content Hubs ----------
+const HubsView = ({ lang, nav }) => {
+  const [hubs, setHubs] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    fetch('/api/hubs').then((r) => r.json()).then((d) => { setHubs(d.hubs || []); setLoading(false) })
+  }, [])
+  const vIcons = {
+    skincare: <Droplets className="h-4 w-4 text-emerald-700" />,
+    hair: <Scissors className="h-4 w-4 text-emerald-700" />,
+    wellness: <HeartPulse className="h-4 w-4 text-emerald-700" />,
+  }
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <SectionTitle sub={lang === 'fr' ? 'Comprendre votre problématique avant de choisir un produit' : 'Understand your concern before choosing a product'}>
+        {lang === 'fr' ? 'Conseils par préoccupation' : 'Advice by concern'}
+      </SectionTitle>
+      {loading ? (
+        <p className="text-stone-400 py-12 text-center">{lang === 'fr' ? 'Chargement...' : 'Loading...'}</p>
+      ) : (
+        VERTICALS.map((v) => {
+          const list = hubs.filter((h) => h.vertical === v.id)
+          if (list.length === 0) return null
+          return (
+            <div key={v.id} className="mb-9">
+              <p className="font-bold text-stone-900 text-lg mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+                {vIcons[v.id]} {v[lang]}
+              </p>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {list.map((h) => (
+                  <Card key={h.slug} data-testid={`hub-card-${h.slug}`} onClick={() => nav('hub', h.slug)} className="cursor-pointer border-stone-200 hover:shadow-lg hover:border-emerald-700/40 transition-all">
+                    <CardContent className="p-4 md:p-5">
+                      <p className="font-bold text-stone-900">{h.title?.[lang]}</p>
+                      <p className="text-sm text-stone-500 mt-1.5 line-clamp-3">{h.definition?.[lang]}</p>
+                      <p className="text-xs text-emerald-800 font-semibold mt-3 flex items-center gap-1">
+                        {lang === 'fr' ? 'Lire le guide complet' : 'Read the full guide'} <ArrowRight className="h-3 w-3" />
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+const HubDetailView = ({ slug, lang, nav }) => {
+  const [h, setH] = useState(null)
+  useEffect(() => { setH(null); fetch(`/api/hubs/${slug}`).then((r) => r.json()).then(setH) }, [slug])
+  if (!h) return <p className="text-center py-20 text-stone-400">...</p>
+  if (h.error) return <p className="text-center py-20 text-stone-400">{h.error}</p>
+  const vLabel = VERTICALS.find((v) => v.id === h.vertical)
+  return (
+    <div>
+      <div className="bg-gradient-to-b from-emerald-50 to-white">
+        <div className="container mx-auto px-4 py-8 md:py-12 max-w-4xl">
+          <button onClick={() => nav('hubs')} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 mb-5">
+            <ArrowLeft className="h-4 w-4" /> {lang === 'fr' ? 'Tous les conseils' : 'All advice'}
+          </button>
+          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 mb-3">{vLabel?.[lang]}</Badge>
+          <h1 data-testid="hub-title" className="text-3xl md:text-5xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-playfair), serif' }}>{h.title?.[lang]}</h1>
+          <p className="text-stone-600 mt-4 leading-relaxed text-base md:text-lg">{h.definition?.[lang]}</p>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 max-w-4xl pb-10">
+        {/* Causes & mistakes */}
+        <div className="grid md:grid-cols-2 gap-4 mt-6">
+          <Card className="border-stone-200">
+            <CardContent className="p-5">
+              <p className="font-semibold text-stone-900 mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4 text-emerald-700" />{lang === 'fr' ? 'Causes fréquentes' : 'Common causes'}</p>
+              <ul className="space-y-2" data-testid="hub-causes">
+                {(h.causes?.[lang] || []).map((c, idx) => (
+                  <li key={idx} className="text-sm text-stone-600 flex items-start gap-2"><span className="text-emerald-700 mt-0.5">•</span>{c}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-200 bg-amber-50/40">
+            <CardContent className="p-5">
+              <p className="font-semibold text-stone-900 mb-3 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />{lang === 'fr' ? 'Erreurs à éviter' : 'Mistakes to avoid'}</p>
+              <ul className="space-y-2" data-testid="hub-mistakes">
+                {(h.mistakes?.[lang] || []).map((m, idx) => (
+                  <li key={idx} className="text-sm text-stone-600 flex items-start gap-2"><X className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />{m}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Key ingredients */}
+        {(h.ingredient_details || []).length > 0 && (
+          <div className="mt-8">
+            <p className="font-bold text-stone-900 text-lg mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+              <FlaskConical className="h-5 w-5 text-emerald-700" /> {lang === 'fr' ? 'Les actifs qui ont fait leurs preuves' : 'The actives that proved themselves'}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2.5" data-testid="hub-ingredients">
+              {h.ingredient_details.map((i) => (
+                <button key={i.slug} data-testid={`hub-ingredient-${i.slug}`} onClick={() => nav('ingredient', i.slug)}
+                  className="flex items-center justify-between p-3 rounded-lg border border-stone-200 hover:border-emerald-700 hover:shadow-sm transition-all text-left bg-white">
+                  <div>
+                    <p className="text-sm font-semibold text-stone-900">{i.name}</p>
+                    <p className="text-[11px] text-stone-400 font-mono">{i.inci}</p>
+                  </div>
+                  <div className="flex gap-1.5"><SafetyBadge safety={i.safety} lang={lang} /><EvidenceBadge evidence={i.evidence} lang={lang} /></div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Buying guide */}
+        <div className="mt-8 rounded-2xl bg-emerald-900 text-white p-6 md:p-8">
+          <p className="font-bold text-lg mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+            <ShoppingBag className="h-5 w-5 text-emerald-300" /> {lang === 'fr' ? "Guide d'achat" : 'Buying guide'}
+          </p>
+          <ol className="space-y-3" data-testid="hub-buying-guide">
+            {(h.buying_guide?.[lang] || []).map((g, idx) => (
+              <li key={idx} className="flex items-start gap-3 text-sm md:text-base text-emerald-50">
+                <span className="h-6 w-6 rounded-full bg-emerald-700 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
+                {g}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {/* Recommended products */}
+        {(h.products || []).length > 0 && (
+          <div className="mt-9">
+            <SectionTitle sub={lang === 'fr' ? 'Sélection triée par note de la communauté' : 'Selection sorted by community rating'}>
+              {lang === 'fr' ? 'Produits recommandés' : 'Recommended products'}
+            </SectionTitle>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5" data-testid="hub-products">
+              {h.products.slice(0, 8).map((p) => <ProductCard key={p.slug} p={p} lang={lang} onOpen={(s) => nav('product', s)} />)}
+            </div>
+          </div>
+        )}
+
+        {/* FAQ */}
+        {(h.faqs || []).length > 0 && (
+          <div className="mt-9">
+            <p className="font-bold text-stone-900 text-lg mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-playfair), serif' }}>
+              <HelpCircle className="h-5 w-5 text-emerald-700" /> {lang === 'fr' ? 'Questions fréquentes' : 'Frequently asked questions'}
+            </p>
+            <Accordion type="single" collapsible className="border border-stone-200 rounded-xl px-4 bg-white" data-testid="hub-faqs">
+              {h.faqs.map((f, idx) => (
+                <AccordionItem key={idx} value={`faq-${idx}`} className={idx === h.faqs.length - 1 ? 'border-b-0' : ''}>
+                  <AccordionTrigger className="text-left text-sm font-semibold text-stone-900 hover:no-underline">{f.q?.[lang]}</AccordionTrigger>
+                  <AccordionContent className="text-sm text-stone-600 leading-relaxed">{f.a?.[lang]}</AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        )}
+
+        <p className="text-[11px] text-stone-400 mt-8">
+          {lang === 'fr'
+            ? 'Ces informations sont éducatives et ne remplacent pas un avis médical. Consultez un professionnel de santé en cas de symptômes persistants.'
+            : 'This information is educational and does not replace medical advice. Consult a healthcare professional if symptoms persist.'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ---------- Learn / Articles ----------
 const LearnView = ({ lang, nav, articles }) => {
   const [cat, setCat] = useState('all')
@@ -1255,6 +1425,22 @@ const ADMIN_FIELDS = {
     { path: 'content.fr', label: 'Contenu FR', type: 'textarea' },
     { path: 'content.en', label: 'Contenu EN', type: 'textarea' },
   ],
+  hubs: [
+    { path: 'slug', label: 'Slug (= id de préoccupation, ex: acne)', type: 'text' },
+    { path: 'vertical', label: 'Univers (skincare/hair/wellness)', type: 'text' },
+    { path: 'title.fr', label: 'Titre FR', type: 'text' },
+    { path: 'title.en', label: 'Titre EN', type: 'text' },
+    { path: 'definition.fr', label: 'Définition FR', type: 'textarea' },
+    { path: 'definition.en', label: 'Définition EN', type: 'textarea' },
+    { path: 'causes.fr', label: 'Causes FR (csv)', type: 'csv' },
+    { path: 'causes.en', label: 'Causes EN (csv)', type: 'csv' },
+    { path: 'mistakes.fr', label: 'Erreurs à éviter FR (csv)', type: 'csv' },
+    { path: 'mistakes.en', label: 'Erreurs à éviter EN (csv)', type: 'csv' },
+    { path: 'buying_guide.fr', label: "Guide d'achat FR (csv)", type: 'csv' },
+    { path: 'buying_guide.en', label: "Guide d'achat EN (csv)", type: 'csv' },
+    { path: 'key_ingredients', label: 'Actifs clés (slugs csv)', type: 'csv' },
+    { path: 'faqs', label: 'FAQ (JSON: [{"q":{"fr":"..","en":".."},"a":{"fr":"..","en":".."}}])', type: 'json' },
+  ],
 }
 
 const AdminCrud = ({ entity, token, lang }) => {
@@ -1328,18 +1514,23 @@ const AdminCrud = ({ entity, token, lang }) => {
             <div className="space-y-3">
               {fields.map((f) => {
                 const raw = getPath(editing, f.path)
-                const value = f.type === 'csv' ? (Array.isArray(raw) ? raw.join(', ') : raw || '') : raw ?? ''
+                const value = f.type === 'csv'
+                  ? (Array.isArray(raw) ? raw.join(', ') : raw || '')
+                  : f.type === 'json'
+                    ? (typeof raw === 'string' ? raw : raw ? JSON.stringify(raw, null, 1) : '')
+                    : raw ?? ''
                 const onChange = (v) => {
                   let parsed = v
                   if (f.type === 'number') parsed = v === '' ? '' : parseFloat(v)
                   if (f.type === 'csv') parsed = v.split(',').map((s) => s.trim()).filter(Boolean)
+                  if (f.type === 'json') { try { parsed = JSON.parse(v) } catch { parsed = v } }
                   setEditing((cur) => setPath(cur, f.path, parsed))
                 }
                 return (
                   <div key={f.path}>
                     <Label className="text-xs text-stone-600">{f.label}</Label>
-                    {f.type === 'textarea' ? (
-                      <Textarea data-testid={`admin-field-${f.path}`} value={value} onChange={(e) => onChange(e.target.value)} rows={3} className="mt-1" />
+                    {f.type === 'textarea' || f.type === 'json' ? (
+                      <Textarea data-testid={`admin-field-${f.path}`} value={value} onChange={(e) => onChange(e.target.value)} rows={f.type === 'json' ? 6 : 3} className="mt-1" />
                     ) : f.type === 'bool' ? (
                       <div className="mt-1">
                         <button type="button" data-testid={`admin-field-${f.path}`} onClick={() => setEditing((cur) => setPath(cur, f.path, !getPath(cur, f.path)))}
@@ -1421,12 +1612,13 @@ const AdminView = ({ lang }) => {
         </Button>
       </div>
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-7">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-7">
           {[
             { k: 'products', fr: 'Produits', en: 'Products' },
             { k: 'brands', fr: 'Marques', en: 'Brands' },
             { k: 'ingredients', fr: 'Ingrédients', en: 'Ingredients' },
             { k: 'articles', fr: 'Articles', en: 'Articles' },
+            { k: 'hubs', fr: 'Hubs', en: 'Hubs' },
             { k: 'leads', fr: 'Leads', en: 'Leads' },
           ].map((s) => (
             <Card key={s.k} className="border-stone-200"><CardContent className="p-4">
@@ -1442,12 +1634,14 @@ const AdminView = ({ lang }) => {
           <TabsTrigger data-testid="admin-tab-brands" value="brands">{lang === 'fr' ? 'Marques' : 'Brands'}</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-ingredients" value="ingredients">{lang === 'fr' ? 'Ingrédients' : 'Ingredients'}</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-articles" value="articles">Articles</TabsTrigger>
+          <TabsTrigger data-testid="admin-tab-hubs" value="hubs">Hubs</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-leads" value="leads">Leads</TabsTrigger>
         </TabsList>
         <TabsContent value="products" className="mt-4"><AdminCrud entity="products" token={token} lang={lang} /></TabsContent>
         <TabsContent value="brands" className="mt-4"><AdminCrud entity="brands" token={token} lang={lang} /></TabsContent>
         <TabsContent value="ingredients" className="mt-4"><AdminCrud entity="ingredients" token={token} lang={lang} /></TabsContent>
         <TabsContent value="articles" className="mt-4"><AdminCrud entity="articles" token={token} lang={lang} /></TabsContent>
+        <TabsContent value="hubs" className="mt-4"><AdminCrud entity="hubs" token={token} lang={lang} /></TabsContent>
         <TabsContent value="leads" className="mt-4">
           <div className="border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-100">
             {leads.length === 0 && <p className="p-4 text-sm text-stone-400">{lang === 'fr' ? 'Aucun lead pour le moment.' : 'No leads yet.'}</p>}
@@ -1488,7 +1682,7 @@ const Footer = ({ lang, nav }) => (
         </div>
         <div>
           <p className="text-white text-sm font-semibold mb-3">{lang === 'fr' ? 'Outils' : 'Tools'}</p>
-          {[['finder', 'Product Finder'], ['compare', lang === 'fr' ? 'Comparateur' : 'Compare'], ['learn', 'Learn & Guides']].map(([v, l]) => (
+          {[['finder', 'Product Finder'], ['compare', lang === 'fr' ? 'Comparateur' : 'Compare'], ['hubs', lang === 'fr' ? 'Conseils' : 'Advice'], ['learn', 'Learn & Guides']].map(([v, l]) => (
             <button key={v} onClick={() => nav(v)} className="block text-xs py-1 hover:text-white">{l}</button>
           ))}
         </div>
@@ -1549,6 +1743,8 @@ function App() {
         {v === 'home' && <HomeView lang={lang} nav={nav} products={products} ingredients={ingredients} brands={brands} articles={articles} />}
         {v === 'products' && <ProductsView lang={lang} nav={nav} initialFilters={route.extra} />}
         {v === 'product' && <ProductDetailView slug={route.param} lang={lang} nav={nav} setCompareA={setCompareA} />}
+        {v === 'hubs' && <HubsView lang={lang} nav={nav} />}
+        {v === 'hub' && <HubDetailView slug={route.param} lang={lang} nav={nav} />}
         {v === 'ingredients' && <IngredientsView lang={lang} nav={nav} ingredients={ingredients} />}
         {v === 'ingredient' && <IngredientDetailView slug={route.param} lang={lang} nav={nav} />}
         {v === 'brands' && <BrandsView lang={lang} nav={nav} germanOnly={false} />}
