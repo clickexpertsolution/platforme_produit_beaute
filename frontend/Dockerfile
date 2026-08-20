@@ -4,8 +4,8 @@ WORKDIR /app
 
 # ── Deps ──────────────────────────────────────────────────────────────────────
 FROM base AS deps
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+COPY package.json ./
+RUN yarn install
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 FROM base AS builder
