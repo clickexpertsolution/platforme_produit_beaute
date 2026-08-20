@@ -520,3 +520,96 @@ agent_communication:
 agent_communication:
   - agent: "main"
     message: "BUG FIX (frontend i18n): The header 'Product Finder' button (data-testid=nav-finder) was hardcoded in English and did not translate when the site language is FR. I made it language-reactive: FR => 'Trouver mon produit', EN => 'Product Finder'. Also fixed the mobile menu finder item (data-testid=mobile-nav-finder). Please VERIFY on the deployed preview: (1) Load the site (default FR). Header CTA button must read 'Trouver mon produit' (NOT 'Product Finder'). (2) Toggle language to EN via the FR/EN toggle (data-testid=lang-toggle). The button must now read 'Product Finder'. (3) Toggle back to FR => 'Trouver mon produit' again. (4) Click the button (nav-finder) — it must navigate to the Product Finder page (finder view). (5) On a narrow viewport, open the mobile menu (data-testid=mobile-menu-btn) and confirm the finder item (mobile-nav-finder) reads 'Trouver mon produit' in FR and 'Product Finder' in EN. This is a small targeted UI/i18n fix; focus only on this."
+
+backend:
+  - task: "Tolerant product search: GET /api/products?search=... is now accent-insensitive and whitespace-flexible (accentInsensitivePattern) and also matches slug, ingredients (slug), concerns (id) and description.fr/en (slugifyTerm). Previously only case-insensitive regex on name+brand_name."
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Smoke-tested via curl: search=r%C3%A9tinol (rétinol) => 1 (borlind-retinol-nature-serum, matched via ingredients slug 'retinol'); search=retinol => 1; search='acide salicylique' => 2 (products containing acide-salicylique ingredient); search=eucerin => 5 (brand); search='vitamine c' => 2. Needs full backend verification + regression."
+      - working: true
+        agent: "testing"
+        comment: "✓ PASSED - All 10 tests passed (100% success rate). Tolerant product search working perfectly. (1) Accent-insensitivity: Both 'rétinol' and 'retinol' return the same product (borlind-retinol-nature-serum) matched via ingredient slug. (2) Whitespace + multi-word: 'acide salicylique' returns 2 products (sebamed-clear-face-gel, eucerin-dermopure-serum) containing acide-salicylique ingredient. (3) Brand match: 'eucerin' returns 5 Eucerin products (>=4 required), all with brand_slug='eucerin'. (4) Accented common word: 'sérum' returns 5 serum products (>=3 required). (5) Case/accents equivalence: SÉRUM, Serum, serum all return the same set of 5 products. (6) Cleanser word: 'nettoyant' returns 2 cleanser products (>=1 required). (7) Regression (no search): Returns exactly 30 products with 'vertical' field, no '_id' field, vertical distribution correct (skincare=14, hair=8, wellness=8). (8) Regression (filters): vertical=hair returns 8, category=serum returns 6 serum products, concern=acne returns 3 products with 'acne' concern. (9) Filter + search combo: vertical=skincare&search=serum returns only 5 skincare products (no hair/wellness). (10) No 500 errors: All responses valid JSON with 'products' and 'total' fields. Search implementation correctly uses accentInsensitivePattern for name/brand_name/descriptions and slugifyTerm for slug/ingredients/concerns matching. No critical issues found. Feature is production-ready."
+
+frontend:
+  - task: "Hero smart search (HeroSearch): replaced the plain hero input with an autocomplete combobox. Normalizes input (strips accents via NFD, apostrophes, collapses spaces) and shows grouped live suggestions: products (with thumbnail+brand), ingredients, concerns (routes to products filtered by concern+vertical), brands. Keyboard nav (ArrowUp/Down/Enter/Escape), click-to-navigate, outside-click close. Enter with no selection navigates to products?search=. Also restyled focus: replaced harsh 2px navy outline with a soft accent border + shadow matching the platform, added a leading Search icon."
+    implemented: true
+    working: "NA"
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Verified visually: typing 'reti' (no accent) shows 'Sérum Rétinol Nature' (PRODUIT + thumbnail) and 'Rétinol' (INGRÉDIENT) — accent-insensitive live suggestions work; dropdown styled to platform card; focus is a soft accent border (no more harsh blue outline). Awaiting user go-ahead for automated frontend testing."
+
+agent_communication:
+  - agent: "main"
+    message: "NEW: Tolerant product search (backend). Test ONLY backend, focus on GET /api/products search. (1) search=rétinol (accented) and search=retinol must BOTH return borlind-retinol-nature-serum (matched via ingredient slug). (2) search with a space, e.g. 'acide salicylique', must return products containing that ingredient (sebamed-clear-face-gel, eucerin-dermopure-serum). (3) search=eucerin returns eucerin brand products (>=4). (4) search=sérum (accented) returns serum products. (5) search=nettoyant returns cleanser products. (6) Case/accents combos: SÉRUM, Serum, serum all return same set. (7) Regression: GET /api/products (no search) still returns 30; other filters (?vertical=hair => 8, ?concern=acne, ?category=serum) still work; ?vertical=skincare&concern=acne combines with search correctly. (8) Confirm no 500 errors and results still exclude _id. Admin password admin123 if needed. Do NOT test frontend."
+
+frontend:
+  - task: "FinderFab floating CTA: round/pill button fixed bottom-right that navigates to Product Finder. Text 'Trouvez vos produits idéaux' (FR) / 'Find your ideal products' (EN), Sparkles icon. Hidden on the finder & admin views. UPDATED per user: must be visible ONLY on mobile (className includes sm:hidden) — hidden at >=640px (sm and up), because desktop already has the header CTA. Also softened the hero search focus style (was a bold navy double outline) to a light accent ring (focus-within:border-dz-accent/35 + ring-dz-accent-bg) and removed the inner input focus outline."
+    implemented: true
+    working: true
+    file: "app/page.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "User first asked for a floating CTA, then asked that it be visible ONLY in mobile mode (bottom-right). Verified via screenshots+bounding_box that on desktop 1440 and mobile 390 the FAB shows and navigates to #/finder, and the search focus is now a light halo. Added sm:hidden. NEEDS verification per user."
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED - All 8 test scenarios PASSED. (1) MOBILE (390x844) on #/: finder-fab is VISIBLE at bottom-right (x:125, y:772), text 'Trouvez vos produits idéaux' correct, clicking navigates to #/finder successfully. (2) DESKTOP (1440x850) on #/: finder-fab is HIDDEN (sm:hidden working correctly). (3) TABLET (768x1024) on #/: finder-fab is HIDDEN (width >= 640px). (4) MOBILE on #/finder: finder-fab NOT VISIBLE (correctly hidden on finder page). (5) MOBILE on #/admin: finder-fab NOT VISIBLE (correctly hidden on admin page). (6) DESKTOP hero search focus: Soft accent ring detected (border: 1px solid rgba(31,78,107,0.35), box-shadow with 4px ring), NO heavy navy double border. (7) DESKTOP hero search autocomplete: Typing 'reti' shows dropdown with 'Sérum Rétinol Nature' (PRODUIT) and 'Rétinol' (INGRÉDIENT) suggestions. (8) REGRESSION: Header CTA (nav-finder) visible and reads 'Trouver mon produit' in FR. All visibility rules working correctly, hero search style is soft/light as expected, autocomplete functional. No critical issues found."
+
+agent_communication:
+  - agent: "main"
+    message: "VERIFY (frontend) the floating Product Finder button visibility rule + hero search style. (1) On MOBILE viewport width < 640px (e.g. 390x844): the button data-testid='finder-fab' MUST be VISIBLE, fixed at bottom-right, label 'Trouvez vos produits idéaux' (FR); clicking it navigates to #/finder. (2) On DESKTOP/tablet viewport width >= 640px (e.g. 1440x850 AND 768x1024): the finder-fab MUST be HIDDEN (not visible / not in layout). (3) The FAB must NOT appear on the finder page (#/finder) or admin (#/admin) even on mobile. (4) Hero search (data-testid='hero-finder-input'): on focus the container shows a SOFT light accent ring (light blue halo), NOT a bold navy double border; typing 'reti' shows autocomplete suggestions (product 'Sérum Rétinol Nature' + ingredient 'Rétinol'). (5) Regression: header CTA (nav-finder) still reads 'Trouver mon produit'"
+  - agent: "testing"
+    message: "✅ VERIFICATION COMPLETE - All 8 test scenarios PASSED (100% success rate). FinderFab visibility rules working perfectly: (1) Mobile (390x844) #/: VISIBLE at bottom-right with correct text, navigates to #/finder ✅. (2) Desktop (1440x850) #/: HIDDEN ✅. (3) Tablet (768x1024) #/: HIDDEN ✅. (4) Mobile #/finder: NOT VISIBLE ✅. (5) Mobile #/admin: NOT VISIBLE ✅. Hero search improvements verified: (6) Desktop focus style: Soft accent ring with 4px box-shadow and rgba(31,78,107,0.35) border, NO heavy navy double border ✅. (7) Autocomplete with 'reti': Shows 'Sérum Rétinol Nature' (PRODUIT) and 'Rétinol' (INGRÉDIENT) suggestions ✅. (8) Regression: Header CTA reads 'Trouver mon produit' in FR ✅. All requirements from review request satisfied. No critical issues found. Feature is production-ready." in FR and is visible on desktop. Focus on these; report visibility booleans per viewport."
+  - agent: "testing"
+    message: "✓ Tolerant product search backend testing complete - ALL 10 tests passed (100% success rate). The upgraded GET /api/products?search=... endpoint is working perfectly. Comprehensive testing performed on all scenarios: (1) Accent-insensitivity verified - 'rétinol' and 'retinol' return identical results (borlind-retinol-nature-serum matched via ingredient slug). (2) Whitespace + multi-word search working - 'acide salicylique' correctly returns 2 products containing the ingredient. (3) Brand search working - 'eucerin' returns 5 Eucerin products (exceeds minimum of 4). (4) Accented common word search working - 'sérum' returns 5 serum products (exceeds minimum of 3). (5) Case/accents equivalence verified - SÉRUM, Serum, serum all return identical sets. (6) French word search working - 'nettoyant' returns 2 cleanser products. (7) Regression tests passed - no search returns exactly 30 products with correct vertical distribution (14/8/8), all have 'vertical' field, no '_id' field present. (8) Filter regression tests passed - vertical=hair returns 8, category=serum returns 6, concern=acne returns 3. (9) Combined filter + search working - vertical=skincare&search=serum returns only skincare products (5 total, no hair/wellness contamination). (10) No 500 errors encountered, all responses valid JSON with 'products' and 'total' fields. The search implementation correctly uses accentInsensitivePattern helper for name/brand_name/descriptions (accent-insensitive regex) and slugifyTerm helper for slug/ingredients/concerns matching (normalized slug format). No critical issues found. Feature is production-ready."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 4
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Product sheet enrichment (SEED_VERSION=4) testing complete - all 30 tests passed"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+
+backend:
+  - task: "Product sheet enrichment (SEED_VERSION=4): ingredients gain studies[]; products gain certifications[] (scope EU/US/global), awards[] (e.g. 'Label 2026 — Meilleur produit certifié' when rating>=4.6), studies[] (url+summary); skincare products with <4 actives get complementary existing ingredients appended."
+    implemented: true
+    working: true
+    file: "app/api/[[...path]]/route.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Smoke-tested via curl: enriched product returns certifications/awards/studies and 4 ingredients; ingredient_details include studies[]. Needs full verification + counts regression."
+      - working: true
+        agent: "testing"
+        comment: "✓ PASSED - All 30 tests passed (100% success rate). Product sheet enrichment (SEED_VERSION=4) working perfectly. (1) Counts regression: GET /api/products returns exactly 30 products, GET /api/brands returns 11, GET /api/ingredients returns 24. NO _id field present anywhere. (2) Product enrichment: ALL products have valid certifications[] array with {name:{fr,en}, scope} where scope ∈ {EU,US,global}; awards[] array (may be empty) with {year, title:{fr,en}}; studies[] array with {title:{fr,en}, source, year, url}. (3) Award label verified: eucerin-hyaluron-filler-serum (rating=4.6) has award with title.fr === 'Label 2026 — Meilleur produit certifié' and certifications include one with scope='US'. (4) Product detail GET /api/products/eucerin-hyaluron-filler-serum: (a) product-level studies[] has 1 item with non-empty url and summary.fr & summary.en ✓; (b) ingredient_details is populated array (4 ingredients) and EACH ingredient has studies[] array with >=1 item with non-empty url ✓; (c) ingredients array length === 4 and equals set {acide-hyaluronique, glycerine, panthenol, squalane} ✓. (5) Ingredient studies: GET /api/ingredients — every ingredient has studies[] (>=1) with url. Specifically niacinamide, retinol, vitamine-c all have curated pubmed.ncbi.nlm.nih.gov urls (NOT generic ?term= fallback) ✓. (6) Regression on filters/search: GET /api/products?vertical=hair returns 8 ✓; GET /api/products?category=serum returns 6 serum products ✓; GET /api/products?concern=acne returns 3 products all containing 'acne' ✓; GET /api/products?search=retinol AND GET /api/products?search=rétinol both return borlind-retinol-nature-serum ✓. (7) Regression other endpoints: GET /api/compare?a=weleda-skin-food&b=dr-hauschka-creme-jour-rose returns 200 with a,b,common_ingredients,ingredient_details ✓; POST /api/admin/login with password admin123 returns token ✓; GET /api/admin/stats (with Bearer) returns numeric products=30, brands=11, ingredients=24 ✓. (8) No 500 errors on any endpoint; all responses valid JSON ✓. All requirements from review request satisfied. No critical issues found. Backend API is production-ready."
+
+agent_communication:
+  - agent: "main"
+    message: "TEST BACKEND ONLY — product enrichment after SEED_VERSION=4 re-seed. (1) GET /api/products=30, /api/brands=11, /api/ingredients=24. (2) Every product has certifications[] ({name:{fr,en}, scope in EU/US/global}), awards[] (may be empty), studies[] ({title:{fr,en},source,year,url}). (3) eucerin-hyaluron-filler-serum (rating>=4.6) has award 'Label 2026 — Meilleur produit certifié' and a 'US' scope certification. (4) GET /api/products/eucerin-hyaluron-filler-serum: each ingredient_details has studies[] with url; product studies[] has url+summary{fr,en}; ingredients length 4 (acide-hyaluronique,glycerine,panthenol,squalane). (5) Every ingredient in /api/ingredients has studies[] (>=1, with url); niacinamide/retinol/vitamine-c have curated pubmed urls. (6) Regression: ?vertical=hair=>8, ?category=serum, ?concern=acne; search=retinol and search=rétinol; compare endpoint; admin login admin123 + stats; no _id leaked; no 500s. Do NOT test frontend."
+  - agent: "testing"
+    message: "✓ Product sheet enrichment (SEED_VERSION=4) backend testing complete - ALL 30 tests passed (100% success rate). Comprehensive testing performed on all requirements: (1) Counts regression verified - 30 products, 11 brands, 24 ingredients, no _id fields anywhere. (2) Product enrichment fields validated - all products have certifications/awards/studies arrays with correct structure. (3) Award label verified - high-rated product has 'Label 2026 — Meilleur produit certifié' and US certification. (4) Product detail enrichment verified - eucerin-hyaluron-filler-serum has 4 ingredients (acide-hyaluronique, glycerine, panthenol, squalane), product studies with url+summary, all ingredient_details have studies with urls. (5) Ingredient studies verified - all 24 ingredients have studies with urls, niacinamide/retinol/vitamine-c have curated pubmed urls (not generic ?term= fallback). (6) All filter/search regressions passed - vertical=hair (8), category=serum (6), concern=acne (3), search=retinol and search=rétinol both work. (7) All other endpoint regressions passed - compare, admin login, admin stats. (8) No 500 errors, all responses valid JSON. Backend API is production-ready for SEED_VERSION=4."

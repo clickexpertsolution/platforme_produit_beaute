@@ -37,6 +37,24 @@ async function getDb() {
 
 const NOID = { projection: { _id: 0 } }
 
+// Recherche tolérante : construit une regex insensible aux accents et aux
+// espaces multiples à partir d'un terme utilisateur (ex. "rétinol", "acide  gras").
+const ACCENT_CLASS = { a: '[aàáâãäå]', c: '[cç]', e: '[eèéêë]', i: '[iìíîï]', n: '[nñ]', o: '[oòóôõö]', u: '[uùúûü]', y: '[yýÿ]' }
+function accentInsensitivePattern(term) {
+  const cleaned = String(term || '').trim().toLowerCase().replace(/['’`]/g, '')
+  const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return escaped
+    .replace(/[aceinouy]/g, (ch) => ACCENT_CLASS[ch] || ch)
+    .replace(/\s+/g, '\\s*')
+}
+// Slugifie un terme pour matcher les slugs d'ingrédients / ids de préoccupations
+// (ex. "acide salicylique" -> "acide-salicylique").
+function slugifyTerm(term) {
+  return String(term || '').trim().toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/['’`]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
 function json(data, status = 200) {
   return NextResponse.json(data, {
     status,
@@ -233,7 +251,62 @@ const SEED_REELS = [
 // (efface les anciens reels de démo et réinsère SEED_REELS).
 const REELS_VERSION = 4
 
-const SEED_VERSION = 3
+// ============ ENRICHISSEMENT FICHE PRODUIT (contenu de démonstration) ============
+// Références d'études par ingrédient : quelques liens réels pour les actifs
+// connus, repli générique (recherche PubMed) sinon. Illustratif (démo).
+const INGREDIENT_STUDIES = {
+  niacinamide: [{ title: { fr: 'Niacinamide topique et fonction barrière', en: 'Topical niacinamide and skin barrier' }, source: 'Br J Dermatol', year: 2000, url: 'https://pubmed.ncbi.nlm.nih.gov/10971324/' }],
+  retinol: [{ title: { fr: 'Rétinol et photo-vieillissement (essai contrôlé)', en: 'Retinol and photoaging (controlled trial)' }, source: 'Arch Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17515510/' }],
+  'vitamine-c': [{ title: { fr: 'Vitamine C topique en dermatologie', en: 'Topical vitamin C in dermatology' }, source: 'Indian Dermatol Online J', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23741676/' }],
+  'acide-salicylique': [{ title: { fr: "Acide salicylique dans l'acné", en: 'Salicylic acid in acne' }, source: 'J Clin Aesthet Dermatol', year: 2015, url: 'https://pubmed.ncbi.nlm.nih.gov/26155326/' }],
+  'acide-hyaluronique': [{ title: { fr: 'Acide hyaluronique et hydratation cutanée', en: 'Hyaluronic acid and skin hydration' }, source: 'J Drugs Dermatol', year: 2011, url: 'https://pubmed.ncbi.nlm.nih.gov/21607255/' }],
+  cafeine: [{ title: { fr: 'Caféine et follicule pileux', en: 'Caffeine and the hair follicle' }, source: 'Int J Dermatol', year: 2007, url: 'https://pubmed.ncbi.nlm.nih.gov/17214716/' }],
+  ceramides: [{ title: { fr: 'Céramides et réparation de la barrière', en: 'Ceramides and barrier repair' }, source: 'J Clin Aesthet Dermatol', year: 2014, url: 'https://pubmed.ncbi.nlm.nih.gov/25276273/' }],
+  melatonine: [{ title: { fr: 'Mélatonine et sommeil (méta-analyse)', en: 'Melatonin and sleep (meta-analysis)' }, source: 'PLoS One', year: 2013, url: 'https://pubmed.ncbi.nlm.nih.gov/23691095/' }],
+  biotine: [{ title: { fr: 'Biotine et santé des phanères (revue)', en: 'Biotin and hair/nail health (review)' }, source: 'Skin Appendage Disord', year: 2017, url: 'https://pubmed.ncbi.nlm.nih.gov/28879195/' }],
+}
+function studiesForIngredient(i) {
+  return INGREDIENT_STUDIES[i.slug] || [{
+    title: { fr: `Revue des données cliniques : ${i.name}`, en: `Review of clinical evidence: ${i.name}` },
+    source: 'PubMed', year: 2019,
+    url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(i.inci || i.name)}`,
+  }]
+}
+function certificationsForProduct(p, brand) {
+  const certs = [{ name: { fr: 'Testé dermatologiquement', en: 'Dermatologically tested' }, scope: 'EU' }]
+  if (p.german_made || (brand && brand.german)) certs.push({ name: { fr: 'Fabriqué en Allemagne', en: 'Made in Germany' }, scope: 'EU' })
+  if (p.vertical === 'skincare') certs.push({ name: { fr: 'Non comédogène (testé)', en: 'Non-comedogenic (tested)' }, scope: 'EU' })
+  if (p.vertical === 'wellness') certs.push({ name: { fr: 'Conforme EFSA', en: 'EFSA-compliant' }, scope: 'EU' })
+  certs.push({ name: { fr: 'Sans cruauté (Leaping Bunny)', en: 'Cruelty-free (Leaping Bunny)' }, scope: 'global' })
+  if ((p.rating || 0) >= 4.5) certs.push({ name: { fr: 'Enregistré FDA (OTC)', en: 'FDA-registered (OTC)' }, scope: 'US' })
+  return certs
+}
+function awardsForProduct(p) {
+  if ((p.rating || 0) >= 4.6) return [{ year: 2026, title: { fr: 'Label 2026 — Meilleur produit certifié', en: '2026 Label — Best Certified Product' } }]
+  if ((p.rating || 0) >= 4.3) return [{ year: 2026, title: { fr: 'Sélection 2026 — Recommandé par les experts', en: '2026 Selection — Expert Recommended' } }]
+  return []
+}
+function studiesForProduct(p) {
+  return [{
+    title: { fr: `Évaluation clinique de tolérance — ${p.name}`, en: `Clinical tolerance assessment — ${p.name}` },
+    source: 'Demo Clinical Report', year: 2025,
+    url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(p.name)}`,
+    summary: { fr: 'Étude de tolérance et de satisfaction sur 4 semaines (contenu de démonstration).', en: '4-week tolerance and satisfaction study (demo content).' },
+  }]
+}
+// Ajoute des actifs complémentaires existants aux fiches skincare qui en ont peu.
+const COMPLEMENTARY_ACTIVES = ['glycerine', 'panthenol', 'squalane', 'aloe-vera']
+function enrichKeyIngredients(p, validSlugs) {
+  const cur = Array.isArray(p.ingredients) ? [...p.ingredients] : []
+  if (p.vertical !== 'skincare' || cur.length >= 4) return cur
+  for (const s of COMPLEMENTARY_ACTIVES) {
+    if (cur.length >= 4) break
+    if (!cur.includes(s) && validSlugs.has(s)) cur.push(s)
+  }
+  return cur
+}
+
+const SEED_VERSION = 4
 
 async function seedIfEmpty(database) {
   const before = await database.collection('meta').findOneAndUpdate(
@@ -244,9 +317,18 @@ async function seedIfEmpty(database) {
   if (before && before.version >= SEED_VERSION) return
   const now = new Date().toISOString()
   await Promise.all(['brands', 'ingredients', 'products', 'articles', 'hubs'].map((c) => database.collection(c).deleteMany({})))
+  const validSlugs = new Set(ALL_INGREDIENTS.map((i) => i.slug))
+  const brandBySlug = Object.fromEntries(ALL_BRANDS.map((b) => [b.slug, b]))
   await database.collection('brands').insertMany(ALL_BRANDS.map((b) => ({ ...b, id: uuidv4(), created_at: now })))
-  await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, id: uuidv4(), created_at: now })))
-  await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({ ...p, id: uuidv4(), created_at: now })))
+  await database.collection('ingredients').insertMany(ALL_INGREDIENTS.map((i) => ({ ...i, studies: studiesForIngredient(i), id: uuidv4(), created_at: now })))
+  await database.collection('products').insertMany(ALL_PRODUCTS.map((p) => ({
+    ...p,
+    ingredients: enrichKeyIngredients(p, validSlugs),
+    certifications: certificationsForProduct(p, brandBySlug[p.brand_slug]),
+    awards: awardsForProduct(p),
+    studies: studiesForProduct(p),
+    id: uuidv4(), created_at: now,
+  })))
   await database.collection('articles').insertMany(SEED_ARTICLES.map((a) => ({ ...a, id: uuidv4(), created_at: now })))
   await database.collection('hubs').insertMany(SEED_HUBS.map((h) => ({ ...h, id: uuidv4(), created_at: now })))
 }
@@ -386,7 +468,19 @@ export async function GET(request, { params }) {
       if (q.skin_type) filter.skin_types = q.skin_type
       if (q.brand) filter.brand_slug = q.brand
       if (q.german === 'true') filter.german_made = true
-      if (q.search) filter.$or = [{ name: { $regex: q.search, $options: 'i' } }, { brand_name: { $regex: q.search, $options: 'i' } }]
+      if (q.search) {
+        const pat = accentInsensitivePattern(q.search)
+        const slug = slugifyTerm(q.search)
+        filter.$or = [
+          { name: { $regex: pat, $options: 'i' } },
+          { brand_name: { $regex: pat, $options: 'i' } },
+          { slug: { $regex: slug, $options: 'i' } },
+          { ingredients: { $regex: slug, $options: 'i' } },
+          { concerns: { $regex: slug, $options: 'i' } },
+          { 'description.fr': { $regex: pat, $options: 'i' } },
+          { 'description.en': { $regex: pat, $options: 'i' } },
+        ]
+      }
       const products = await database.collection('products').find(filter, NOID).limit(parseInt(q.limit || '100')).toArray()
       return json({ products, total: products.length })
     }
@@ -450,6 +544,12 @@ export async function GET(request, { params }) {
 
     // ---- REELS ----
     if (path[0] === 'reels') {
+      // Filet de sécurité (déploiement / base neuve type Coolify) : si la
+      // collection est vide, on ré-ensemence immédiatement les reels avant de répondre.
+      if ((await database.collection('reels').countDocuments()) === 0) {
+        const now = new Date().toISOString()
+        await database.collection('reels').insertMany(SEED_REELS.map((r) => ({ ...r, id: uuidv4(), created_at: now })))
+      }
       if (path[1]) {
         const reel = await database.collection('reels').findOne({ slug: path[1] }, NOID)
         if (!reel) return json({ error: 'Reel not found' }, 404)

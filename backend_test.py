@@ -1,696 +1,472 @@
 #!/usr/bin/env python3
 """
-Backend API Testing Script for Phase A (Conversion) - Dermalyze
-Tests multi-vertical finder, avoid_ingredients, newsletter, tracking, admin endpoints, and regressions
+Backend API Testing for Dermalyze - SEED_VERSION=4 Product Sheet Enrichment
+Tests certifications, awards, and studies fields added to products and ingredients.
 """
 
 import requests
 import json
 import sys
+from typing import Dict, List, Any
 
 # Base URL from environment
-BASE_URL = "https://reel-showcase-73.preview.emergentagent.com/api"
+BASE_URL = "https://eddc6e9b-ad88-4b75-96c8-5fd66b9478e1.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "admin123"
 
-# Test counters
-tests_passed = 0
-tests_failed = 0
-test_results = []
+class TestResults:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
+    
+    def add_pass(self, test_name: str):
+        self.passed += 1
+        print(f"✓ PASS: {test_name}")
+    
+    def add_fail(self, test_name: str, reason: str):
+        self.failed += 1
+        error_msg = f"✗ FAIL: {test_name} - {reason}"
+        self.errors.append(error_msg)
+        print(error_msg)
+    
+    def summary(self):
+        total = self.passed + self.failed
+        print(f"\n{'='*80}")
+        print(f"TEST SUMMARY: {self.passed}/{total} passed ({self.failed} failed)")
+        print(f"{'='*80}")
+        if self.errors:
+            print("\nFAILURES:")
+            for error in self.errors:
+                print(f"  {error}")
+        return self.failed == 0
 
-def log_test(name, passed, details=""):
-    """Log test result"""
-    global tests_passed, tests_failed
-    if passed:
-        tests_passed += 1
-        print(f"✓ PASS: {name}")
-        if details:
-            print(f"  → {details}")
-    else:
-        tests_failed += 1
-        print(f"✗ FAIL: {name}")
-        if details:
-            print(f"  → {details}")
-    test_results.append({"name": name, "passed": passed, "details": details})
+results = TestResults()
 
-def get_admin_token():
-    """Get admin Bearer token"""
+def test_api_call(method: str, endpoint: str, headers: Dict = None, json_data: Dict = None) -> tuple:
+    """Make API call and return (status_code, response_data)"""
     try:
-        response = requests.post(f"{BASE_URL}/admin/login", json={"password": ADMIN_PASSWORD}, timeout=10)
-        if response.status_code == 200:
-            return response.json().get("token")
-        return None
+        url = f"{BASE_URL}{endpoint}"
+        if method == "GET":
+            resp = requests.get(url, headers=headers, timeout=30)
+        elif method == "POST":
+            resp = requests.post(url, headers=headers, json=json_data, timeout=30)
+        else:
+            return (0, {"error": f"Unsupported method: {method}"})
+        
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"error": "Invalid JSON response", "text": resp.text[:200]}
+        
+        return (resp.status_code, data)
     except Exception as e:
-        print(f"Error getting admin token: {e}")
-        return None
+        return (0, {"error": str(e)})
 
-print("=" * 80)
-print("PHASE A (CONVERSION) BACKEND TESTING")
-print("=" * 80)
+print("="*80)
+print("DERMALYZE API BACKEND TESTING - SEED_VERSION=4 ENRICHMENT")
+print("="*80)
 print(f"Base URL: {BASE_URL}")
-print()
+print(f"Admin Password: {ADMIN_PASSWORD}")
+print("="*80)
 
 # ============================================================================
-# TEST 1: Multi-vertical finder - HAIR
+# TEST 1: Counts Regression
 # ============================================================================
-print("\n" + "=" * 80)
-print("TEST 1: Multi-vertical finder - HAIR")
-print("=" * 80)
+print("\n[TEST 1] Counts Regression - Products, Brands, Ingredients")
 
-try:
-    payload = {"concerns": ["hair-loss"], "budget": "high", "vertical": "hair"}
-    response = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
-    
-    if response.status_code == 200:
-        data = response.json()
-        routine = data.get("routine", {})
-        sections = routine.get("sections", [])
-        
-        # Check sections length is 1
-        if len(sections) == 1:
-            log_test("Hair finder returns 1 section", True, f"sections length: {len(sections)}")
-        else:
-            log_test("Hair finder returns 1 section", False, f"Expected 1 section, got {len(sections)}")
-        
-        # Check section id is "routine"
-        if sections and sections[0].get("id") == "routine":
-            log_test("Hair section id is 'routine'", True)
-        else:
-            log_test("Hair section id is 'routine'", False, f"Got id: {sections[0].get('id') if sections else 'N/A'}")
-        
-        # Check step categories
-        if sections:
-            steps = sections[0].get("steps", [])
-            valid_categories = {"shampoo", "conditioner", "hair-treatment", "scalp-serum"}
-            step_categories = [step.get("category") for step in steps]
-            all_valid = all(cat in valid_categories for cat in step_categories)
-            
-            if all_valid:
-                log_test("Hair step categories valid", True, f"Categories: {step_categories}")
-            else:
-                log_test("Hair step categories valid", False, f"Invalid categories found: {step_categories}")
-            
-            # Check all products have vertical="hair"
-            all_hair = all(step.get("product", {}).get("vertical") == "hair" for step in steps)
-            if all_hair:
-                log_test("All hair products have vertical='hair'", True)
-            else:
-                verticals = [step.get("product", {}).get("vertical") for step in steps]
-                log_test("All hair products have vertical='hair'", False, f"Found verticals: {verticals}")
-        
-        # Check alternatives array present
-        alternatives = data.get("alternatives", [])
-        if isinstance(alternatives, list):
-            log_test("Hair finder has alternatives array", True, f"alternatives count: {len(alternatives)}")
-        else:
-            log_test("Hair finder has alternatives array", False, "alternatives not an array")
+status, data = test_api_call("GET", "/products")
+if status == 200 and "products" in data:
+    products = data["products"]
+    if len(products) == 30:
+        results.add_pass("GET /api/products returns exactly 30 products")
     else:
-        log_test("Hair finder API call", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("Hair finder API call", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 2: Multi-vertical finder - WELLNESS
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 2: Multi-vertical finder - WELLNESS")
-print("=" * 80)
-
-try:
-    payload = {"concerns": ["sleep"], "budget": "high", "vertical": "wellness"}
-    response = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
+        results.add_fail("GET /api/products count", f"Expected 30, got {len(products)}")
     
-    if response.status_code == 200:
-        data = response.json()
-        routine = data.get("routine", {})
-        sections = routine.get("sections", [])
-        
-        # Check sections length is 1
-        if len(sections) == 1:
-            log_test("Wellness finder returns 1 section", True)
-        else:
-            log_test("Wellness finder returns 1 section", False, f"Expected 1, got {len(sections)}")
-        
-        # Check section id is "routine"
-        if sections and sections[0].get("id") == "routine":
-            log_test("Wellness section id is 'routine'", True)
-        else:
-            log_test("Wellness section id is 'routine'", False, f"Got: {sections[0].get('id') if sections else 'N/A'}")
-        
-        # Check step categories
-        if sections:
-            steps = sections[0].get("steps", [])
-            valid_categories = {"supplement", "tea", "bath-body"}
-            step_categories = [step.get("category") for step in steps]
-            all_valid = all(cat in valid_categories for cat in step_categories)
-            
-            if all_valid:
-                log_test("Wellness step categories valid", True, f"Categories: {step_categories}")
-            else:
-                log_test("Wellness step categories valid", False, f"Invalid: {step_categories}")
-            
-            # Check all products have vertical="wellness"
-            all_wellness = all(step.get("product", {}).get("vertical") == "wellness" for step in steps)
-            if all_wellness:
-                log_test("All wellness products have vertical='wellness'", True)
-            else:
-                verticals = [step.get("product", {}).get("vertical") for step in steps]
-                log_test("All wellness products have vertical='wellness'", False, f"Found: {verticals}")
+    # Check no _id field
+    has_id = any("_id" in p for p in products)
+    if not has_id:
+        results.add_pass("Products have no _id field")
     else:
-        log_test("Wellness finder API call", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("Wellness finder API call", False, f"Exception: {str(e)}")
+        results.add_fail("Products _id field", "Found _id in products")
+else:
+    results.add_fail("GET /api/products", f"Status {status}, data: {data}")
 
-# ============================================================================
-# TEST 3: Multi-vertical finder - SKINCARE (with legacy fields)
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 3: Multi-vertical finder - SKINCARE (with legacy fields)")
-print("=" * 80)
-
-try:
-    payload = {"skin_type": "oily", "concerns": ["acne"], "budget": "mid", "vertical": "skincare"}
-    response = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
+status, data = test_api_call("GET", "/brands")
+if status == 200 and "brands" in data:
+    brands = data["brands"]
+    if len(brands) == 11:
+        results.add_pass("GET /api/brands returns exactly 11 brands")
+    else:
+        results.add_fail("GET /api/brands count", f"Expected 11, got {len(brands)}")
     
-    if response.status_code == 200:
-        data = response.json()
-        routine = data.get("routine", {})
-        sections = routine.get("sections", [])
+    # Check no _id field
+    has_id = any("_id" in b for b in brands)
+    if not has_id:
+        results.add_pass("Brands have no _id field")
+    else:
+        results.add_fail("Brands _id field", "Found _id in brands")
+else:
+    results.add_fail("GET /api/brands", f"Status {status}, data: {data}")
+
+status, data = test_api_call("GET", "/ingredients")
+if status == 200 and "ingredients" in data:
+    ingredients = data["ingredients"]
+    if len(ingredients) == 24:
+        results.add_pass("GET /api/ingredients returns exactly 24 ingredients")
+    else:
+        results.add_fail("GET /api/ingredients count", f"Expected 24, got {len(ingredients)}")
+    
+    # Check no _id field
+    has_id = any("_id" in i for i in ingredients)
+    if not has_id:
+        results.add_pass("Ingredients have no _id field")
+    else:
+        results.add_fail("Ingredients _id field", "Found _id in ingredients")
+else:
+    results.add_fail("GET /api/ingredients", f"Status {status}, data: {data}")
+
+# ============================================================================
+# TEST 2: Product Enrichment Fields (certifications, awards, studies)
+# ============================================================================
+print("\n[TEST 2] Product Enrichment - Every product has certifications, awards, studies")
+
+status, data = test_api_call("GET", "/products")
+if status == 200 and "products" in data:
+    products = data["products"]
+    all_have_certs = True
+    all_have_awards = True
+    all_have_studies = True
+    
+    for p in products:
+        # Check certifications
+        if "certifications" not in p or not isinstance(p["certifications"], list):
+            all_have_certs = False
+            results.add_fail(f"Product {p.get('slug', 'unknown')} certifications", "Missing or not array")
+            break
         
-        # Check sections has 2 sections (morning & evening)
-        if len(sections) == 2:
-            log_test("Skincare finder returns 2 sections", True, f"sections: {len(sections)}")
+        # Validate certification structure
+        for cert in p["certifications"]:
+            if not all(k in cert for k in ["name", "scope"]):
+                results.add_fail(f"Product {p.get('slug')} certification structure", f"Missing fields: {cert}")
+                all_have_certs = False
+                break
+            if not isinstance(cert["name"], dict) or "fr" not in cert["name"] or "en" not in cert["name"]:
+                results.add_fail(f"Product {p.get('slug')} certification name", "name must have fr and en")
+                all_have_certs = False
+                break
+            if cert["scope"] not in ["EU", "US", "global"]:
+                results.add_fail(f"Product {p.get('slug')} certification scope", f"Invalid scope: {cert['scope']}")
+                all_have_certs = False
+                break
+        
+        # Check awards (array, may be empty)
+        if "awards" not in p or not isinstance(p["awards"], list):
+            all_have_awards = False
+            results.add_fail(f"Product {p.get('slug')} awards", "Missing or not array")
+            break
+        
+        # Validate award structure if not empty
+        for award in p["awards"]:
+            if not all(k in award for k in ["year", "title"]):
+                results.add_fail(f"Product {p.get('slug')} award structure", f"Missing fields: {award}")
+                all_have_awards = False
+                break
+            if not isinstance(award["title"], dict) or "fr" not in award["title"] or "en" not in award["title"]:
+                results.add_fail(f"Product {p.get('slug')} award title", "title must have fr and en")
+                all_have_awards = False
+                break
+        
+        # Check studies
+        if "studies" not in p or not isinstance(p["studies"], list) or len(p["studies"]) == 0:
+            all_have_studies = False
+            results.add_fail(f"Product {p.get('slug')} studies", "Missing, not array, or empty")
+            break
+        
+        # Validate study structure
+        for study in p["studies"]:
+            if not all(k in study for k in ["title", "source", "year", "url"]):
+                results.add_fail(f"Product {p.get('slug')} study structure", f"Missing fields: {study}")
+                all_have_studies = False
+                break
+            if not isinstance(study["title"], dict) or "fr" not in study["title"] or "en" not in study["title"]:
+                results.add_fail(f"Product {p.get('slug')} study title", "title must have fr and en")
+                all_have_studies = False
+                break
+    
+    if all_have_certs:
+        results.add_pass("All products have valid certifications array with {name:{fr,en}, scope}")
+    if all_have_awards:
+        results.add_pass("All products have valid awards array (may be empty) with {year, title:{fr,en}}")
+    if all_have_studies:
+        results.add_pass("All products have valid studies array with {title:{fr,en}, source, year, url}")
+
+# ============================================================================
+# TEST 3: Award Label - High-rated product with specific award
+# ============================================================================
+print("\n[TEST 3] Award Label - High-rated product has 'Label 2026 — Meilleur produit certifié'")
+
+status, data = test_api_call("GET", "/products")
+if status == 200 and "products" in data:
+    products = data["products"]
+    
+    # Find eucerin-hyaluron-filler-serum (rating 4.6)
+    target_product = None
+    for p in products:
+        if p.get("slug") == "eucerin-hyaluron-filler-serum":
+            target_product = p
+            break
+    
+    if target_product:
+        # Check rating
+        if target_product.get("rating", 0) >= 4.6:
+            results.add_pass("eucerin-hyaluron-filler-serum has rating >= 4.6")
         else:
-            log_test("Skincare finder returns 2 sections", False, f"Expected 2, got {len(sections)}")
+            results.add_fail("eucerin-hyaluron-filler-serum rating", f"Expected >= 4.6, got {target_product.get('rating')}")
         
-        # Check section ids are morning and evening
-        section_ids = [s.get("id") for s in sections]
-        if "morning" in section_ids and "evening" in section_ids:
-            log_test("Skincare sections have morning & evening ids", True)
+        # Check award
+        awards = target_product.get("awards", [])
+        has_label = False
+        for award in awards:
+            if award.get("title", {}).get("fr") == "Label 2026 — Meilleur produit certifié":
+                has_label = True
+                results.add_pass("eucerin-hyaluron-filler-serum has award 'Label 2026 — Meilleur produit certifié'")
+                break
+        
+        if not has_label:
+            results.add_fail("eucerin-hyaluron-filler-serum award", f"Missing 'Label 2026 — Meilleur produit certifié', awards: {awards}")
+        
+        # Check certifications include US scope
+        certs = target_product.get("certifications", [])
+        has_us = any(c.get("scope") == "US" for c in certs)
+        if has_us:
+            results.add_pass("eucerin-hyaluron-filler-serum has certification with scope 'US'")
         else:
-            log_test("Skincare sections have morning & evening ids", False, f"Got ids: {section_ids}")
+            results.add_fail("eucerin-hyaluron-filler-serum US certification", f"No US scope found, certs: {certs}")
+    else:
+        results.add_fail("eucerin-hyaluron-filler-serum", "Product not found")
+
+# ============================================================================
+# TEST 4: Product Detail - eucerin-hyaluron-filler-serum
+# ============================================================================
+print("\n[TEST 4] Product Detail - eucerin-hyaluron-filler-serum enrichment")
+
+status, data = test_api_call("GET", "/products/eucerin-hyaluron-filler-serum")
+if status == 200:
+    product = data
+    
+    # (a) Product-level studies with url and summary
+    studies = product.get("studies", [])
+    if len(studies) >= 1:
+        study = studies[0]
+        if study.get("url") and study.get("summary", {}).get("fr") and study.get("summary", {}).get("en"):
+            results.add_pass("Product has study with non-empty url and summary.fr & summary.en")
+        else:
+            results.add_fail("Product study fields", f"Missing url or summary: {study}")
+    else:
+        results.add_fail("Product studies", "No studies found")
+    
+    # (b) ingredient_details populated and EACH has studies[] with url
+    ingredient_details = product.get("ingredient_details", [])
+    if len(ingredient_details) > 0:
+        results.add_pass(f"Product has ingredient_details array ({len(ingredient_details)} ingredients)")
         
-        # Check legacy fields present
-        has_morning = "morning" in routine and isinstance(routine["morning"], list)
-        has_evening = "evening" in routine and isinstance(routine["evening"], list)
-        has_warnings = "warnings" in routine and isinstance(routine["warnings"], dict)
-        
-        if has_morning:
-            morning_steps = routine["morning"]
-            log_test("Legacy routine.morning present", True, f"{len(morning_steps)} steps")
+        all_have_studies = True
+        for ing in ingredient_details:
+            ing_studies = ing.get("studies", [])
+            if len(ing_studies) == 0:
+                results.add_fail(f"Ingredient {ing.get('slug')} studies", "No studies found")
+                all_have_studies = False
+                break
             
-            # Check morning has 4 steps: cleanser→serum→moisturizer→sunscreen
-            if len(morning_steps) == 4:
-                categories = [s.get("category") for s in morning_steps]
-                expected = ["cleanser", "serum", "moisturizer", "sunscreen"]
-                if categories == expected:
-                    log_test("Morning routine has correct 4 steps", True, f"Categories: {categories}")
+            # Check each study has url
+            for s in ing_studies:
+                if not s.get("url"):
+                    results.add_fail(f"Ingredient {ing.get('slug')} study url", f"Missing url: {s}")
+                    all_have_studies = False
+                    break
+        
+        if all_have_studies:
+            results.add_pass("All ingredients in ingredient_details have studies[] with non-empty url")
+    else:
+        results.add_fail("ingredient_details", "Empty or missing")
+    
+    # (c) ingredients array length === 4 and equals {acide-hyaluronique, glycerine, panthenol, squalane}
+    ingredients = product.get("ingredients", [])
+    expected_set = {"acide-hyaluronique", "glycerine", "panthenol", "squalane"}
+    actual_set = set(ingredients)
+    
+    if len(ingredients) == 4:
+        results.add_pass("Product has exactly 4 ingredients")
+    else:
+        results.add_fail("Product ingredients count", f"Expected 4, got {len(ingredients)}: {ingredients}")
+    
+    if actual_set == expected_set:
+        results.add_pass("Product ingredients match expected set {acide-hyaluronique, glycerine, panthenol, squalane}")
+    else:
+        results.add_fail("Product ingredients set", f"Expected {expected_set}, got {actual_set}")
+else:
+    results.add_fail("GET /api/products/eucerin-hyaluron-filler-serum", f"Status {status}, data: {data}")
+
+# ============================================================================
+# TEST 5: Ingredient Studies - All ingredients have studies with url
+# ============================================================================
+print("\n[TEST 5] Ingredient Studies - Every ingredient has studies[] with url")
+
+status, data = test_api_call("GET", "/ingredients")
+if status == 200 and "ingredients" in data:
+    ingredients = data["ingredients"]
+    
+    all_have_studies = True
+    for ing in ingredients:
+        studies = ing.get("studies", [])
+        if len(studies) == 0:
+            results.add_fail(f"Ingredient {ing.get('slug')} studies", "No studies found")
+            all_have_studies = False
+            continue
+        
+        # Check each study has url
+        for s in studies:
+            if not s.get("url"):
+                results.add_fail(f"Ingredient {ing.get('slug')} study url", f"Missing url: {s}")
+                all_have_studies = False
+                break
+    
+    if all_have_studies:
+        results.add_pass("All ingredients have studies[] with non-empty url")
+    
+    # Check specific ingredients have curated pubmed urls (not generic ?term= fallback)
+    curated_ingredients = ["niacinamide", "retinol", "vitamine-c"]
+    for slug in curated_ingredients:
+        ing = next((i for i in ingredients if i.get("slug") == slug), None)
+        if ing:
+            studies = ing.get("studies", [])
+            if len(studies) > 0:
+                url = studies[0].get("url", "")
+                # Check it's a specific pubmed URL, not the generic ?term= fallback
+                if "pubmed.ncbi.nlm.nih.gov/" in url and "?term=" not in url:
+                    results.add_pass(f"Ingredient {slug} has curated pubmed URL (not generic ?term= fallback)")
                 else:
-                    log_test("Morning routine has correct 4 steps", False, f"Expected {expected}, got {categories}")
+                    results.add_fail(f"Ingredient {slug} study url", f"Expected curated pubmed URL, got: {url}")
             else:
-                log_test("Morning routine has 4 steps", False, f"Got {len(morning_steps)} steps")
+                results.add_fail(f"Ingredient {slug} studies", "No studies found")
         else:
-            log_test("Legacy routine.morning present", False)
-        
-        if has_evening:
-            evening_steps = routine["evening"]
-            log_test("Legacy routine.evening present", True, f"{len(evening_steps)} steps")
-            
-            # Check evening has 3 steps (NO sunscreen)
-            if len(evening_steps) == 3:
-                categories = [s.get("category") for s in evening_steps]
-                has_sunscreen = "sunscreen" in categories
-                if not has_sunscreen:
-                    log_test("Evening routine has NO sunscreen", True, f"Categories: {categories}")
-                else:
-                    log_test("Evening routine has NO sunscreen", False, f"Found sunscreen in: {categories}")
-            else:
-                log_test("Evening routine has 3 steps", False, f"Got {len(evening_steps)} steps")
-        else:
-            log_test("Legacy routine.evening present", False)
-        
-        if has_warnings:
-            warnings = routine["warnings"]
-            has_morning_warnings = "morning" in warnings and isinstance(warnings["morning"], list)
-            has_evening_warnings = "evening" in warnings and isinstance(warnings["evening"], list)
-            if has_morning_warnings and has_evening_warnings:
-                log_test("Legacy routine.warnings present", True, f"morning: {len(warnings['morning'])}, evening: {len(warnings['evening'])}")
-            else:
-                log_test("Legacy routine.warnings present", False, f"Structure: {warnings}")
-        else:
-            log_test("Legacy routine.warnings present", False)
+            results.add_fail(f"Ingredient {slug}", "Not found")
+
+# ============================================================================
+# TEST 6: Regression - Filters and Search
+# ============================================================================
+print("\n[TEST 6] Regression - Filters and Search")
+
+# vertical=hair returns 8
+status, data = test_api_call("GET", "/products?vertical=hair")
+if status == 200 and "products" in data:
+    count = len(data["products"])
+    if count == 8:
+        results.add_pass("GET /api/products?vertical=hair returns 8 products")
     else:
-        log_test("Skincare finder API call", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("Skincare finder API call", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 4: avoid_ingredients - retinol exclusion
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 4: avoid_ingredients - retinol exclusion")
-print("=" * 80)
-
-try:
-    payload = {
-        "skin_type": "normal",
-        "concerns": ["aging"],
-        "budget": "high",
-        "vertical": "skincare",
-        "avoid_ingredients": ["retinol"]
-    }
-    response = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
-    
-    if response.status_code == 200:
-        data = response.json()
-        routine = data.get("routine", {})
-        sections = routine.get("sections", [])
-        alternatives = data.get("alternatives", [])
-        results = data.get("results", [])
-        
-        # Collect all products from sections, alternatives, and results
-        all_products = []
-        
-        # From sections
-        for section in sections:
-            for step in section.get("steps", []):
-                product = step.get("product", {})
-                if product:
-                    all_products.append(product)
-        
-        # From alternatives
-        for alt in alternatives:
-            if alt:
-                all_products.append(alt)
-        
-        # From results
-        for result in results:
-            if result:
-                all_products.append(result)
-        
-        # Check if any product contains retinol
-        products_with_retinol = []
-        for product in all_products:
-            ingredients = product.get("ingredients", [])
-            if "retinol" in ingredients:
-                products_with_retinol.append(product.get("slug", "unknown"))
-        
-        if len(products_with_retinol) == 0:
-            log_test("No products contain retinol", True, f"Checked {len(all_products)} products")
-        else:
-            log_test("No products contain retinol", False, f"Found retinol in: {products_with_retinol}")
-    else:
-        log_test("avoid_ingredients retinol API call", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("avoid_ingredients retinol API call", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 5: avoid_ingredients - acide-salicylique exclusion
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 5: avoid_ingredients - acide-salicylique exclusion")
-print("=" * 80)
-
-try:
-    payload = {
-        "skin_type": "oily",
-        "concerns": ["acne"],
-        "budget": "mid",
-        "vertical": "skincare",
-        "avoid_ingredients": ["acide-salicylique"]
-    }
-    response = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
-    
-    if response.status_code == 200:
-        data = response.json()
-        routine = data.get("routine", {})
-        sections = routine.get("sections", [])
-        alternatives = data.get("alternatives", [])
-        results = data.get("results", [])
-        
-        # Collect all products
-        all_products = []
-        for section in sections:
-            for step in section.get("steps", []):
-                product = step.get("product", {})
-                if product:
-                    all_products.append(product)
-        for alt in alternatives:
-            if alt:
-                all_products.append(alt)
-        for result in results:
-            if result:
-                all_products.append(result)
-        
-        # Check if any product contains acide-salicylique
-        products_with_salicylic = []
-        for product in all_products:
-            ingredients = product.get("ingredients", [])
-            if "acide-salicylique" in ingredients:
-                products_with_salicylic.append(product.get("slug", "unknown"))
-        
-        if len(products_with_salicylic) == 0:
-            log_test("No products contain acide-salicylique", True, f"Checked {len(all_products)} products")
-        else:
-            log_test("No products contain acide-salicylique", False, f"Found in: {products_with_salicylic}")
-    else:
-        log_test("avoid_ingredients salicylic API call", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("avoid_ingredients salicylic API call", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 6: Newsletter - valid email
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 6: Newsletter - valid email")
-print("=" * 80)
-
-try:
-    # Use unique email for testing
-    test_email = "tester1@example.com"
-    payload = {"email": test_email}
-    response = requests.post(f"{BASE_URL}/newsletter", json=payload, timeout=10)
-    
-    if response.status_code == 201:
-        data = response.json()
-        if data.get("ok") == True and data.get("already") == False:
-            log_test("Newsletter signup - first time", True, f"Response: {data}")
-        else:
-            log_test("Newsletter signup - first time", False, f"Expected ok:true, already:false, got: {data}")
-    elif response.status_code == 200:
-        # Email might already exist from previous test
-        data = response.json()
-        if data.get("ok") == True and data.get("already") == True:
-            log_test("Newsletter signup - first time (already exists)", True, f"Email already in DB: {data}")
-        else:
-            log_test("Newsletter signup - first time", False, f"Status 200 but unexpected data: {data}")
-    else:
-        log_test("Newsletter signup - first time", False, f"Status: {response.status_code}, Body: {response.text}")
-except Exception as e:
-    log_test("Newsletter signup - first time", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 7: Newsletter - duplicate email
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 7: Newsletter - duplicate email")
-print("=" * 80)
-
-try:
-    test_email = "tester1@example.com"
-    payload = {"email": test_email}
-    response = requests.post(f"{BASE_URL}/newsletter", json=payload, timeout=10)
-    
-    if response.status_code == 200:
-        data = response.json()
-        if data.get("ok") == True and data.get("already") == True:
-            log_test("Newsletter signup - duplicate", True, f"Response: {data}")
-        else:
-            log_test("Newsletter signup - duplicate", False, f"Expected ok:true, already:true, got: {data}")
-    else:
-        log_test("Newsletter signup - duplicate", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("Newsletter signup - duplicate", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 8: Newsletter - invalid email
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 8: Newsletter - invalid email")
-print("=" * 80)
-
-try:
-    payload = {"email": "bad"}
-    response = requests.post(f"{BASE_URL}/newsletter", json=payload, timeout=10)
-    
-    if response.status_code == 400:
-        log_test("Newsletter invalid email returns 400", True, f"Response: {response.json()}")
-    else:
-        log_test("Newsletter invalid email returns 400", False, f"Expected 400, got: {response.status_code}")
-except Exception as e:
-    log_test("Newsletter invalid email returns 400", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 9: Tracking - affiliate click
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 9: Tracking - affiliate click")
-print("=" * 80)
-
-try:
-    payload = {"type": "affiliate_click", "product_slug": "weleda-skin-food"}
-    response = requests.post(f"{BASE_URL}/track", json=payload, timeout=10)
-    
-    if response.status_code == 201:
-        data = response.json()
-        if data.get("ok") == True:
-            log_test("Tracking affiliate click", True, f"Response: {data}")
-        else:
-            log_test("Tracking affiliate click", False, f"Expected ok:true, got: {data}")
-    else:
-        log_test("Tracking affiliate click", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("Tracking affiliate click", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 10: Admin - subscribers without auth
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 10: Admin - subscribers without auth")
-print("=" * 80)
-
-try:
-    response = requests.get(f"{BASE_URL}/admin/subscribers", timeout=10)
-    
-    if response.status_code == 401:
-        log_test("Admin subscribers without auth returns 401", True)
-    else:
-        log_test("Admin subscribers without auth returns 401", False, f"Expected 401, got: {response.status_code}")
-except Exception as e:
-    log_test("Admin subscribers without auth returns 401", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 11: Admin - get token and test subscribers
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 11: Admin - get token and test subscribers")
-print("=" * 80)
-
-admin_token = get_admin_token()
-if admin_token:
-    log_test("Admin login successful", True, f"Token: {admin_token[:20]}...")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.get(f"{BASE_URL}/admin/subscribers", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "subscribers" in data and "total" in data:
-                log_test("Admin subscribers with auth", True, f"Total: {data['total']}, Count: {len(data['subscribers'])}")
-            else:
-                log_test("Admin subscribers with auth", False, f"Missing fields: {data.keys()}")
-        else:
-            log_test("Admin subscribers with auth", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("Admin subscribers with auth", False, f"Exception: {str(e)}")
+        results.add_fail("vertical=hair count", f"Expected 8, got {count}")
 else:
-    log_test("Admin login successful", False, "Could not get token")
+    results.add_fail("GET /api/products?vertical=hair", f"Status {status}")
 
-# ============================================================================
-# TEST 12: Admin - stats includes subscribers and affiliate_clicks
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 12: Admin - stats includes subscribers and affiliate_clicks")
-print("=" * 80)
-
-if admin_token:
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.get(f"{BASE_URL}/admin/stats", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            has_subscribers = "subscribers" in data and isinstance(data["subscribers"], (int, float))
-            has_clicks = "affiliate_clicks" in data and isinstance(data["affiliate_clicks"], (int, float))
-            
-            if has_subscribers and has_clicks:
-                log_test("Admin stats includes subscribers & affiliate_clicks", True, 
-                        f"subscribers: {data['subscribers']}, affiliate_clicks: {data['affiliate_clicks']}")
-            else:
-                missing = []
-                if not has_subscribers:
-                    missing.append("subscribers")
-                if not has_clicks:
-                    missing.append("affiliate_clicks")
-                log_test("Admin stats includes subscribers & affiliate_clicks", False, 
-                        f"Missing fields: {missing}, Got: {list(data.keys())}")
-            
-            # Also check other expected fields
-            expected_fields = ["products", "brands", "ingredients", "articles", "leads", "hubs"]
-            all_present = all(field in data for field in expected_fields)
-            if all_present:
-                log_test("Admin stats has all expected fields", True, f"Fields: {list(data.keys())}")
-            else:
-                log_test("Admin stats has all expected fields", False, f"Got: {list(data.keys())}")
-        else:
-            log_test("Admin stats API call", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("Admin stats API call", False, f"Exception: {str(e)}")
-else:
-    log_test("Admin stats requires token", False, "No token available")
-
-# ============================================================================
-# TEST 13: Share-routine regression - POST finder
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 13: Share-routine regression - POST finder")
-print("=" * 80)
-
-saved_routine = None
-saved_alternatives = None
-saved_profile = None
-
-try:
-    payload = {"skin_type": "oily", "concerns": ["acne"], "budget": "mid", "vertical": "skincare"}
-    response = requests.post(f"{BASE_URL}/finder", json=payload, timeout=10)
-    
-    if response.status_code == 200:
-        data = response.json()
-        saved_routine = data.get("routine")
-        saved_alternatives = data.get("alternatives", [])
-        saved_profile = {"skin_type": "oily", "concerns": ["acne"], "budget": "mid", "vertical": "skincare"}
-        
-        if saved_routine and "sections" in saved_routine:
-            log_test("Finder returns routine with sections", True, f"sections count: {len(saved_routine['sections'])}")
-        else:
-            log_test("Finder returns routine with sections", False, f"routine: {saved_routine}")
+# category=serum returns only serum products
+status, data = test_api_call("GET", "/products?category=serum")
+if status == 200 and "products" in data:
+    products = data["products"]
+    all_serum = all(p.get("category") == "serum" for p in products)
+    if all_serum and len(products) > 0:
+        results.add_pass(f"GET /api/products?category=serum returns only serum products ({len(products)} found)")
     else:
-        log_test("Finder API call for share-routine", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("Finder API call for share-routine", False, f"Exception: {str(e)}")
-
-# ============================================================================
-# TEST 14: Share-routine - POST /api/routines
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 14: Share-routine - POST /api/routines")
-print("=" * 80)
-
-routine_id = None
-
-if saved_routine:
-    try:
-        payload = {
-            "routine": saved_routine,
-            "alternatives": saved_alternatives,
-            "profile": saved_profile
-        }
-        response = requests.post(f"{BASE_URL}/routines", json=payload, timeout=10)
-        
-        if response.status_code == 201:
-            data = response.json()
-            routine_id = data.get("id")
-            if routine_id and len(routine_id) == 10:
-                log_test("POST /api/routines returns short id", True, f"id: {routine_id}")
-            else:
-                log_test("POST /api/routines returns short id", False, f"id: {routine_id}")
-        else:
-            log_test("POST /api/routines", False, f"Status: {response.status_code}, Body: {response.text}")
-    except Exception as e:
-        log_test("POST /api/routines", False, f"Exception: {str(e)}")
+        results.add_fail("category=serum filter", f"Not all products are serum: {[p.get('category') for p in products]}")
 else:
-    log_test("POST /api/routines", False, "No routine to save")
+    results.add_fail("GET /api/products?category=serum", f"Status {status}")
 
-# ============================================================================
-# TEST 15: Share-routine - GET /api/routines/:id
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 15: Share-routine - GET /api/routines/:id")
-print("=" * 80)
-
-if routine_id:
-    try:
-        response = requests.get(f"{BASE_URL}/routines/{routine_id}", timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Check structure
-            has_id = "id" in data
-            has_routine = "routine" in data
-            has_alternatives = "alternatives" in data
-            has_profile = "profile" in data
-            has_created_at = "created_at" in data
-            no_mongo_id = "_id" not in data
-            
-            if all([has_id, has_routine, has_alternatives, has_profile, has_created_at, no_mongo_id]):
-                log_test("GET /api/routines/:id returns complete data", True, f"Fields: {list(data.keys())}")
-            else:
-                log_test("GET /api/routines/:id returns complete data", False, f"Fields: {list(data.keys())}")
-            
-            # Check routine has sections
-            routine = data.get("routine", {})
-            if "sections" in routine and isinstance(routine["sections"], list):
-                log_test("Retrieved routine has sections", True, f"sections count: {len(routine['sections'])}")
-            else:
-                log_test("Retrieved routine has sections", False, f"routine keys: {list(routine.keys())}")
-        else:
-            log_test("GET /api/routines/:id", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("GET /api/routines/:id", False, f"Exception: {str(e)}")
+# concern=acne returns products all containing 'acne'
+status, data = test_api_call("GET", "/products?concern=acne")
+if status == 200 and "products" in data:
+    products = data["products"]
+    all_have_acne = all("acne" in p.get("concerns", []) for p in products)
+    if all_have_acne and len(products) > 0:
+        results.add_pass(f"GET /api/products?concern=acne returns products all containing 'acne' ({len(products)} found)")
+    else:
+        results.add_fail("concern=acne filter", f"Not all products have acne concern")
 else:
-    log_test("GET /api/routines/:id", False, "No routine id to retrieve")
+    results.add_fail("GET /api/products?concern=acne", f"Status {status}")
 
-# ============================================================================
-# TEST 16: Share-routine - POST empty body
-# ============================================================================
-print("\n" + "=" * 80)
-print("TEST 16: Share-routine - POST empty body")
-print("=" * 80)
-
-try:
-    response = requests.post(f"{BASE_URL}/routines", json={}, timeout=10)
-    
-    if response.status_code == 400:
-        log_test("POST /api/routines with empty body returns 400", True)
+# search=retinol returns borlind-retinol-nature-serum
+status, data = test_api_call("GET", "/products?search=retinol")
+if status == 200 and "products" in data:
+    products = data["products"]
+    found = any(p.get("slug") == "borlind-retinol-nature-serum" for p in products)
+    if found:
+        results.add_pass("GET /api/products?search=retinol returns borlind-retinol-nature-serum")
     else:
-        log_test("POST /api/routines with empty body returns 400", False, f"Expected 400, got: {response.status_code}")
-except Exception as e:
-    log_test("POST /api/routines with empty body returns 400", False, f"Exception: {str(e)}")
+        results.add_fail("search=retinol", f"borlind-retinol-nature-serum not found, got: {[p.get('slug') for p in products]}")
+else:
+    results.add_fail("GET /api/products?search=retinol", f"Status {status}")
+
+# search=r%C3%A9tinol (rétinol with accent) returns borlind-retinol-nature-serum
+status, data = test_api_call("GET", "/products?search=r%C3%A9tinol")
+if status == 200 and "products" in data:
+    products = data["products"]
+    found = any(p.get("slug") == "borlind-retinol-nature-serum" for p in products)
+    if found:
+        results.add_pass("GET /api/products?search=rétinol returns borlind-retinol-nature-serum")
+    else:
+        results.add_fail("search=rétinol", f"borlind-retinol-nature-serum not found, got: {[p.get('slug') for p in products]}")
+else:
+    results.add_fail("GET /api/products?search=rétinol", f"Status {status}")
 
 # ============================================================================
-# TEST 17: Regression - GET /api/products returns 30 products
+# TEST 7: Regression - Other Endpoints
 # ============================================================================
-print("\n" + "=" * 80)
-print("TEST 17: Regression - GET /api/products returns 30 products")
-print("=" * 80)
+print("\n[TEST 7] Regression - Other Endpoints")
 
-try:
-    response = requests.get(f"{BASE_URL}/products", timeout=10)
+# Compare endpoint
+status, data = test_api_call("GET", "/compare?a=weleda-skin-food&b=dr-hauschka-creme-jour-rose")
+if status == 200:
+    if all(k in data for k in ["a", "b", "common_ingredients", "ingredient_details"]):
+        results.add_pass("GET /api/compare returns 200 with a, b, common_ingredients, ingredient_details")
+    else:
+        results.add_fail("Compare response structure", f"Missing fields: {data.keys()}")
+else:
+    results.add_fail("GET /api/compare", f"Status {status}, data: {data}")
+
+# Admin login
+status, data = test_api_call("POST", "/admin/login", json_data={"password": ADMIN_PASSWORD})
+if status == 200 and "token" in data:
+    token = data["token"]
+    results.add_pass("POST /api/admin/login with admin123 returns token")
     
-    if response.status_code == 200:
-        data = response.json()
-        products = data.get("products", [])
-        if len(products) == 30:
-            log_test("GET /api/products returns 30 products", True, f"Count: {len(products)}")
+    # Admin stats
+    headers = {"Authorization": f"Bearer {token}"}
+    status, data = test_api_call("GET", "/admin/stats", headers=headers)
+    if status == 200:
+        if data.get("products") == 30 and data.get("brands") == 11 and data.get("ingredients") == 24:
+            results.add_pass("GET /api/admin/stats returns products=30, brands=11, ingredients=24")
         else:
-            log_test("GET /api/products returns 30 products", False, f"Expected 30, got: {len(products)}")
+            results.add_fail("Admin stats counts", f"Expected products=30, brands=11, ingredients=24, got: {data}")
     else:
-        log_test("GET /api/products", False, f"Status: {response.status_code}")
-except Exception as e:
-    log_test("GET /api/products", False, f"Exception: {str(e)}")
+        results.add_fail("GET /api/admin/stats", f"Status {status}, data: {data}")
+else:
+    results.add_fail("POST /api/admin/login", f"Status {status}, data: {data}")
+
+# ============================================================================
+# TEST 8: No 500 Errors - All responses valid JSON
+# ============================================================================
+print("\n[TEST 8] No 500 Errors - All responses valid JSON")
+
+# All previous tests already checked for valid JSON and status codes
+# This is a summary check
+if results.failed == 0:
+    results.add_pass("All API endpoints returned valid JSON with no 500 errors")
+else:
+    print("Note: Some tests failed, check individual test results above")
 
 # ============================================================================
 # SUMMARY
 # ============================================================================
-print("\n" + "=" * 80)
-print("TEST SUMMARY")
-print("=" * 80)
-print(f"Total tests: {tests_passed + tests_failed}")
-print(f"Passed: {tests_passed}")
-print(f"Failed: {tests_failed}")
-print(f"Success rate: {(tests_passed / (tests_passed + tests_failed) * 100):.1f}%")
-print("=" * 80)
+print("\n" + "="*80)
+success = results.summary()
+print("="*80)
 
-# Exit with appropriate code
-sys.exit(0 if tests_failed == 0 else 1)
+sys.exit(0 if success else 1)

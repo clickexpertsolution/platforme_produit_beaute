@@ -369,18 +369,128 @@ const StatsBand = ({ stats, lang }) => {
   )
 }
 
-const HomeView = ({ lang, nav, products, ingredients, brands, articles, reels = [] }) => {
+// Recherche héro intelligente : normalise l'entrée (accents, espaces,
+// apostrophes) et propose des suggestions groupées (produits, ingrédients,
+// préoccupations, marques) avec navigation clavier.
+const normalizeText = (s) => (s || '').toString().toLowerCase().normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '').replace(/[’'`]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+
+const HERO_TYPE_LABEL = {
+  product: { fr: 'Produit', en: 'Product' },
+  ingredient: { fr: 'Ingrédient', en: 'Ingredient' },
+  concern: { fr: 'Préoccupation', en: 'Concern' },
+  brand: { fr: 'Marque', en: 'Brand' },
+}
+
+const HeroSearch = ({ lang, nav, products, ingredients, brands }) => {
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const wrapRef = useRef(null)
+
+  const nq = normalizeText(query)
+  const tokens = nq ? nq.split(' ').filter(Boolean) : []
+  const match = (hay) => { const h = normalizeText(hay); return tokens.every((t) => h.includes(t)) }
+
+  const prod = tokens.length ? products.filter((p) => match(`${p.name} ${p.brand_name} ${p.slug}`)).slice(0, 5) : []
+  const ing = tokens.length ? ingredients.filter((i) => match(`${i.name} ${i.slug} ${i.inci || ''}`)).slice(0, 4) : []
+  const conc = tokens.length ? CONCERNS.filter((c) => match(`${c.fr} ${c.en} ${c.id}`)).slice(0, 4) : []
+  const brd = tokens.length ? brands.filter((b) => match(`${b.name} ${b.slug}`)).slice(0, 3) : []
+
+  const items = [
+    ...prod.map((p) => ({ type: 'product', key: 'p-' + p.slug, label: p.name, sub: p.brand_name, img: p.image, go: () => nav('product', p.slug) })),
+    ...ing.map((i) => ({ type: 'ingredient', key: 'i-' + i.slug, label: i.name, sub: i.inci, go: () => nav('ingredient', i.slug) })),
+    ...conc.map((c) => ({ type: 'concern', key: 'c-' + c.id, label: c[lang], sub: label(VERTICALS, c.vertical, lang), go: () => nav('products', null, { concern: c.id, vertical: c.vertical }) })),
+    ...brd.map((b) => ({ type: 'brand', key: 'b-' + b.slug, label: b.name + (b.german ? ' 🇩🇪' : ''), sub: b.city, go: () => nav('brand', b.slug) })),
+  ]
+  const showDropdown = open && tokens.length > 0
+
+  useEffect(() => { setActive(0) }, [query])
+  useEffect(() => {
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  const choose = (it) => { setOpen(false); setQuery(''); it.go() }
+  const submit = (e) => {
+    e.preventDefault()
+    if (showDropdown && items[active]) { choose(items[active]); return }
+    const q = query.trim()
+    if (q) { setOpen(false); nav('products', null, { search: q }) }
+  }
+  const onKeyDown = (e) => {
+    if (!showDropdown) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, items.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+    else if (e.key === 'Escape') { setOpen(false) }
+  }
+
+  return (
+    <div id="finder" ref={wrapRef} className="relative max-w-[530px]">
+      <form onSubmit={submit}
+        className="flex items-center gap-3 rounded-dz-pill border border-dz-rule bg-dz-surface p-2 pl-5 shadow-dz-search transition-[box-shadow,border-color] duration-200 focus-within:border-dz-accent/35 focus-within:ring-4 focus-within:ring-dz-accent-bg">
+        <Search className="h-4 w-4 shrink-0 text-dz-text-4" />
+        <input
+          data-testid="hero-finder-input"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded={showDropdown}
+          aria-autocomplete="list"
+          aria-label={lang === 'fr' ? 'Rechercher' : 'Search'}
+          placeholder={lang === 'fr' ? 'Un produit, un ingrédient, une préoccupation…' : 'A product, an ingredient, a concern…'}
+          className="min-w-0 flex-1 border-none bg-transparent py-3 text-[15px] font-light text-dz-ink outline-none focus:outline-none focus-visible:outline-none placeholder:text-dz-text-4"
+        />
+        <button type="submit" data-testid="hero-finder-btn"
+          className="whitespace-nowrap rounded-dz-pill bg-dz-accent px-[26px] py-3.5 text-[14.5px] font-medium text-white transition-colors duration-250 hover:bg-dz-accent-hover">
+          {lang === 'fr' ? 'Lancer' : 'Search'}
+        </button>
+      </form>
+
+      {showDropdown && (
+        <div data-testid="hero-suggestions"
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-dz-card border border-dz-rule bg-dz-surface shadow-dz-card">
+          {items.length === 0 ? (
+            <div className="px-5 py-4 text-[14px] text-dz-text-4">
+              {lang === 'fr' ? 'Aucun résultat — appuyez sur Entrée pour lancer la recherche' : 'No result — press Enter to search'}
+            </div>
+          ) : (
+            <ul className="max-h-[360px] overflow-y-auto py-1.5">
+              {items.map((it, idx) => (
+                <li key={it.key}>
+                  <button type="button"
+                    data-testid={`hero-suggestion-item-${idx}`}
+                    onMouseEnter={() => setActive(idx)}
+                    onClick={() => choose(it)}
+                    className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${idx === active ? 'bg-dz-accent-bg' : 'hover:bg-dz-surface-2'}`}>
+                    {it.type === 'product' && it.img
+                      ? <img src={it.img} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" />
+                      : <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-dz-surface-2"><Search className="h-3.5 w-3.5 text-dz-text-4" /></span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] text-dz-ink">{it.label}</span>
+                      {it.sub && <span className="block truncate text-[11px] text-dz-text-4">{it.sub}</span>}
+                    </span>
+                    <Mono className="shrink-0 rounded-dz-pill bg-dz-surface-2 px-2 py-0.5 text-[9px] tracking-[0.08em] text-dz-text-3">{HERO_TYPE_LABEL[it.type][lang]}</Mono>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const HomeView = ({ lang, nav, products, ingredients, brands, articles, reels = [] }) => {
   const [filter, setFilter] = useState('all')
 
   const featured = [...products].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 4)
   const german = brands.filter((b) => b.german)
   const loading = products.length === 0
-
-  const submitSearch = (e) => {
-    e.preventDefault()
-    nav('products', null, { search: query.trim() })
-  }
 
   // Handoff §6 : filtre sur la famille de l'ingrédient, avec état vide.
   const shownIngredients = ingredients
@@ -418,22 +528,8 @@ const HomeView = ({ lang, nav, products, ingredients, brands, articles, reels = 
                   : 'Analyze ingredients, compare products and find your ideal routine — with a unique focus on German dermatological brands.'}
               </p>
 
-              {/* Barre Product Finder */}
-              <form id="finder" onSubmit={submitSearch}
-                className="flex max-w-[530px] items-center gap-4 rounded-dz-pill bg-dz-surface p-2 pl-6 shadow-dz-search focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-dz-accent">
-                <input
-                  data-testid="hero-finder-input"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label={lang === 'fr' ? 'Rechercher' : 'Search'}
-                  placeholder={lang === 'fr' ? 'Un produit, un ingrédient, une préoccupation…' : 'A product, an ingredient, a concern…'}
-                  className="min-w-0 flex-1 border-none bg-transparent py-3 text-[15px] font-light text-dz-ink outline-none placeholder:text-dz-text-4"
-                />
-                <button type="submit" data-testid="hero-finder-btn"
-                  className="whitespace-nowrap rounded-dz-pill bg-dz-accent px-[26px] py-3.5 text-[14.5px] font-medium text-white transition-colors duration-250 hover:bg-dz-accent-hover">
-                  {lang === 'fr' ? 'Lancer' : 'Search'}
-                </button>
-              </form>
+              {/* Barre de recherche intelligente (autocomplétion) */}
+              <HeroSearch lang={lang} nav={nav} products={products} ingredients={ingredients} brands={brands} />
 
               {/* Suggestions populaires */}
               <div className="mt-[18px] flex flex-wrap items-center gap-2.5">
@@ -1111,11 +1207,35 @@ const ProductsView = ({ lang, nav, initialFilters }) => {
 }
 
 // ---------- Product detail ----------
+// Ligne d'étude (cliquable, ouvre la source externe).
+const StudyRow = ({ s, lang, tag }) => (
+  <a href={s.url || '#'} target="_blank" rel="noopener noreferrer"
+    data-testid="study-row"
+    className="flex items-start justify-between gap-3 rounded-lg border border-dz-rule bg-white p-3 transition-colors hover:border-dz-accent">
+    <div className="min-w-0">
+      <p className="text-sm font-medium text-dz-ink">{s.title?.[lang] || s.title?.fr}</p>
+      <p className="mt-0.5 text-[11px] text-dz-text-4">
+        {tag && <span className="font-medium text-dz-accent">{tag} · </span>}
+        {s.source}{s.year ? ` · ${s.year}` : ''}
+      </p>
+      {s.summary?.[lang] && <p className="mt-1.5 text-[12.5px] leading-relaxed text-dz-text-2">{s.summary[lang]}</p>}
+    </div>
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[12px] text-dz-accent">
+      {lang === 'fr' ? "Voir l'étude" : 'View study'} <ExternalLink className="h-3.5 w-3.5" />
+    </span>
+  </a>
+)
+
 const ProductDetailView = ({ slug, lang, nav, setCompareA }) => {
   const [p, setP] = useState(null)
   useEffect(() => { fetch(`/api/products/${slug}`).then((r) => r.json()).then(setP) }, [slug])
   if (!p) return <p className="text-center py-20 text-dz-text-4">...</p>
   if (p.error) return <p className="text-center py-20 text-dz-text-4">{p.error}</p>
+  const certs = p.certifications || []
+  const awards = p.awards || []
+  const productStudies = p.studies || []
+  const ingredientStudies = (p.ingredient_details || []).flatMap((i) => (i.studies || []).map((s) => ({ ...s, ingredient: i.name, slug: i.slug })))
+  const scopeText = (sc) => sc === 'US' ? 'US' : sc === 'global' ? (lang === 'fr' ? 'International' : 'Global') : 'UE'
   return (
     <div className="container mx-auto px-4 py-8">
       <button onClick={() => nav('products')} className="flex items-center gap-1 text-sm text-dz-text-2 hover:text-dz-ink mb-5">
@@ -1173,6 +1293,61 @@ const ProductDetailView = ({ slug, lang, nav, setCompareA }) => {
           </div>
         </div>
       </div>
+
+      {(certs.length > 0 || awards.length > 0) && (
+        <div className="mt-12 grid gap-6 md:grid-cols-2">
+          {certs.length > 0 && (
+            <div data-testid="product-certifications">
+              <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dz-text-4"><BadgeCheck className="h-4 w-4 text-dz-accent" />{lang === 'fr' ? 'Certifications reconnues' : 'Recognized certifications'}</p>
+              <div className="flex flex-wrap gap-2">
+                {certs.map((c, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-2 rounded-dz-pill border border-dz-rule bg-white px-3 py-1.5 text-[13px] text-dz-ink">
+                    <ShieldCheck className="h-3.5 w-3.5 text-dz-accent" />
+                    {c.name?.[lang]}
+                    <Mono className="rounded-dz-pill bg-dz-accent-bg px-1.5 py-0.5 text-[9px] tracking-[0.08em] text-dz-accent">{scopeText(c.scope)}</Mono>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {awards.length > 0 && (
+            <div data-testid="product-awards">
+              <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dz-text-4"><Trophy className="h-4 w-4 text-dz-sand-eyebrow" />{lang === 'fr' ? 'Labels & récompenses' : 'Labels & awards'}</p>
+              <div className="flex flex-col gap-2">
+                {awards.map((a, idx) => (
+                  <div key={idx} className="flex items-center gap-3 rounded-xl border border-dz-sand bg-dz-surface-2 px-4 py-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-dz-sand"><Trophy className="h-4 w-4 text-dz-sand-eyebrow" /></span>
+                    <div><p className="text-sm font-semibold text-dz-ink">{a.title?.[lang]}</p><Mono className="text-[10px] tracking-[0.1em] text-dz-text-4">{a.year}</Mono></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(productStudies.length > 0 || ingredientStudies.length > 0) && (
+        <div className="mt-12" data-testid="product-studies">
+          <p className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-dz-text-4"><BookOpen className="h-4 w-4 text-dz-accent" />{lang === 'fr' ? 'Études & preuves scientifiques' : 'Studies & scientific evidence'}</p>
+          {productStudies.length > 0 && (
+            <>
+              <p className="mb-2 text-[13px] font-semibold text-dz-ink">{lang === 'fr' ? 'Sur le produit' : 'On the product'}</p>
+              <div className="mb-5 grid gap-2">
+                {productStudies.map((s, idx) => <StudyRow key={'ps' + idx} s={s} lang={lang} />)}
+              </div>
+            </>
+          )}
+          {ingredientStudies.length > 0 && (
+            <>
+              <p className="mb-2 text-[13px] font-semibold text-dz-ink">{lang === 'fr' ? 'Sur les ingrédients' : 'On the ingredients'}</p>
+              <div className="grid gap-2">
+                {ingredientStudies.map((s, idx) => <StudyRow key={'is' + idx} s={s} lang={lang} tag={s.ingredient} />)}
+              </div>
+            </>
+          )}
+          <p className="mt-3 text-[11px] text-dz-text-4">{lang === 'fr' ? 'Références fournies à titre informatif (démonstration).' : 'References provided for informational purposes (demo).'}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -3025,6 +3200,25 @@ const Footer = ({ lang, nav }) => {
 }
 
 // ---------- App ----------
+// Bouton flottant (FAB) vers le Product Finder — icône ronde, fixe en bas à
+// droite, VISIBLE UNIQUEMENT en mobile (sm:hidden). Le libellé complet est porté
+// par aria-label + title (info-bulle) pour l'accessibilité.
+const FinderFab = ({ lang, nav, route }) => {
+  if (route?.view === 'finder' || route?.view === 'admin') return null
+  const labelTxt = lang === 'fr' ? 'Trouvez vos produits idéaux' : 'Find your ideal products'
+  return (
+    <button
+      data-testid="finder-fab"
+      onClick={() => nav('finder')}
+      aria-label={labelTxt}
+      title={labelTxt}
+      className="fixed bottom-6 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-dz-accent text-white shadow-dz-card-hover ring-1 ring-white/15 transition-[transform,background-color] duration-250 hover:-translate-y-0.5 hover:bg-dz-accent-hover active:translate-y-0 sm:hidden"
+    >
+      <Sparkles className="h-6 w-6" />
+    </button>
+  )
+}
+
 function App() {
   const [lang, setLangState] = useState('fr')
   const [route, setRoute] = useState({ view: 'home', param: null, extra: null })
@@ -3117,6 +3311,7 @@ function App() {
         {v === 'admin' && <AdminView lang={lang} />}
       </main>
       <Footer lang={lang} nav={nav} />
+      <FinderFab lang={lang} nav={nav} route={route} />
     </div>
   )
 }
