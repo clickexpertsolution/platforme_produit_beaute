@@ -17,6 +17,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import {
   t, ts, pick, pickText, tAdmin, Kw, isRTL, LANG_META, NUMBER_LOCALE, LANGS,
 } from '@/lib/i18n'
+import { ReviewsSection, QASection, ForumView, CommunityModeration } from '@/components/community'
 import {
   Menu, X, Search, Star, Sparkles, ArrowRight, ArrowLeft, Check, FlaskConical, Leaf,
   GitCompare, BookOpen, Building2, ShieldCheck, Trash2, Pencil, Plus, LogOut,
@@ -309,6 +310,7 @@ const Header = ({ lang, setLang, nav, route }) => {
   const utilityItems = [
     // « Reels » traduit en arabe par la translittération usuelle « ريلز ».
     { v: 'reels', fr: 'Reels', en: 'Reels', ar: 'ريلز' },
+    { v: 'forum', fr: 'Forum', en: 'Forum', ar: 'المنتدى' },
     { v: 'learn', fr: 'Guides', en: 'Guides', ar: 'أدلّة' },
     { v: 'for-brands', fr: 'Pour les marques', en: 'For Brands', ar: 'للعلامات التجارية' },
   ]
@@ -1527,6 +1529,9 @@ const ProductDetailView = ({ slug, lang, nav, setCompareA }) => {
           <p className="mt-3 text-[11px] text-dz-text-4">{t(lang, 'Références fournies à titre informatif (démonstration).', 'References provided for informational purposes (demo).')}</p>
         </div>
       )}
+
+      <ReviewsSection lang={lang} targetType="product" targetSlug={slug} targetName={pickText(p.name, lang)} />
+      <QASection lang={lang} productSlug={slug} />
     </div>
   )
 }
@@ -1621,6 +1626,8 @@ const IngredientDetailView = ({ slug, lang, nav }) => {
           </div>
         </div>
       )}
+
+      <ReviewsSection lang={lang} targetType="ingredient" targetSlug={slug} targetName={pickText(i.name, lang)} />
     </div>
   )
 }
@@ -1723,6 +1730,8 @@ const BrandDetailView = ({ slug, lang, nav }) => {
           {(b.products || []).map((p) => <ProductCard key={p.slug} p={p} lang={lang} onOpen={(s) => nav('product', s)} />)}
         </div>
       </div>
+
+      <ReviewsSection lang={lang} targetType="brand" targetSlug={slug} targetName={pickText(b.name, lang)} />
     </div>
   )
 }
@@ -3247,6 +3256,9 @@ const AdminView = ({ lang }) => {
             { k: 'leads', fr: 'Leads', en: 'Leads', ar: 'الطلبات' },
             { k: 'subscribers', fr: 'Abonnés', en: 'Subscribers', ar: 'المشتركون' },
             { k: 'affiliate_clicks', fr: 'Clics achat', en: 'Buy clicks', ar: 'نقرات الشراء' },
+            { k: 'reviews_pending', fr: 'Avis à modérer', en: 'Reviews to moderate', ar: 'تقييمات للمراجعة' },
+            { k: 'questions_pending', fr: 'Questions à modérer', en: 'Questions to moderate', ar: 'أسئلة للمراجعة' },
+            { k: 'forum_pending', fr: 'Forum à modérer', en: 'Forum to moderate', ar: 'منتدى للمراجعة' },
           ].map((s) => (
             <Card key={s.k} className="border-dz-rule"><CardContent className="p-4">
               <p className="text-2xl font-semibold text-dz-ink" data-testid={`stat-${s.k}`}>{stats[s.k]}</p>
@@ -3265,6 +3277,9 @@ const AdminView = ({ lang }) => {
           <TabsTrigger data-testid="admin-tab-reels" value="reels">{t(lang, 'Reels', 'Reels')}</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-leads" value="leads">{t(lang, 'Leads', 'Leads')}</TabsTrigger>
           <TabsTrigger data-testid="admin-tab-subscribers" value="subscribers">{t(lang, 'Abonnés', 'Subscribers')}</TabsTrigger>
+          <TabsTrigger data-testid="admin-tab-reviews" value="mod-reviews">{t(lang, 'Avis', 'Reviews')}</TabsTrigger>
+          <TabsTrigger data-testid="admin-tab-questions" value="mod-questions">{t(lang, 'Questions', 'Questions')}</TabsTrigger>
+          <TabsTrigger data-testid="admin-tab-forum" value="mod-forum">{t(lang, 'Forum', 'Forum')}</TabsTrigger>
         </TabsList>
         <TabsContent value="products" className="mt-4"><AdminCrud entity="products" token={token} lang={lang} /></TabsContent>
         <TabsContent value="brands" className="mt-4"><AdminCrud entity="brands" token={token} lang={lang} /></TabsContent>
@@ -3312,6 +3327,9 @@ const AdminView = ({ lang }) => {
             ))}
           </div>
         </TabsContent>
+        <TabsContent value="mod-reviews" className="mt-4"><CommunityModeration lang={lang} token={token} kind="reviews" /></TabsContent>
+        <TabsContent value="mod-questions" className="mt-4"><CommunityModeration lang={lang} token={token} kind="questions" /></TabsContent>
+        <TabsContent value="mod-forum" className="mt-4"><CommunityModeration lang={lang} token={token} kind="forum" /></TabsContent>
       </Tabs>
     </div>
   )
@@ -3342,6 +3360,7 @@ const Footer = ({ lang, nav }) => {
         ['hubs', t(lang, 'Conseils', 'Advice')],
         ['learn', t(lang, 'Learn & Guides', 'Learn & Guides')],
         ['reels', t(lang, 'Reels', 'Reels')],
+        ['forum', t(lang, 'Forum', 'Forum')],
       ],
     },
     {
@@ -3502,6 +3521,7 @@ function App() {
         {v === 'learn' && <LearnView lang={lang} nav={nav} articles={articles} />}
         {v === 'article' && <ArticleDetailView slug={route.param} lang={lang} nav={nav} />}
         {v === 'for-brands' && <ForBrandsView lang={lang} />}
+        {v === 'forum' && <ForumView lang={lang} nav={nav} slug={route.param} />}
         {v === 'admin' && <AdminView lang={lang} />}
       </main>
       <Footer lang={lang} nav={nav} />

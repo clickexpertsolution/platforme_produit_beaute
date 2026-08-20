@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { LlmChat, UserMessage } from 'emergentintegrations'
 import { SEED_HUBS } from '@/lib/seed-hubs'
 import { BRANDS_AR, INGREDIENTS_AR, PRODUCTS_AR, ARTICLES_AR, REELS_AR, HUBS_AR } from '@/lib/content-ar'
+import { buildReviews, SEED_QUESTIONS, FORUM_THREADS_SEED, FORUM_CATEGORIES } from '@/lib/seed-community'
 import { mergeAr, arUpdateSet, mergeFaqs } from '@/lib/merge-ar'
 
 export const runtime = 'nodejs'
@@ -474,6 +475,81 @@ async function requireAdmin(request, database) {
   return await database.collection('sessions').findOne({ token })
 }
 
+// ============ COMMUNITY SEED (avis / Q&R / forum) ============
+// Ensemencement versionné et idempotent des données de démonstration
+// communautaires. Verrou intra-processus (comme les reels) pour éviter les
+// doublons quand plusieurs requêtes /api arrivent en parallèle.
+const COMMUNITY_VERSION = 2
+const daysAgoISO = (d) => new Date(Date.now() - (d || 0) * 86400000).toISOString()
+let communitySeeding = null
+function seedCommunityIfEmpty(database) {
+  if (!communitySeeding) {
+    communitySeeding = runCommunitySeed(database).finally(() => { communitySeeding = null })
+  }
+  return communitySeeding
+}
+async function runCommunitySeed(database) {
+  const before = await database.collection('meta').findOneAndUpdate(
+    { key: 'community_version' },
+    { $set: { key: 'community_version', version: COMMUNITY_VERSION, at: new Date().toISOString() } },
+    { upsert: true, returnDocument: 'before' }
+  )
+  if (before && before.version >= COMMUNITY_VERSION) return
+  await Promise.all(['reviews', 'questions', 'forum_threads', 'forum_posts'].map((c) => database.collection(c).deleteMany({})))
+
+  // Avis
+  const reviews = buildReviews().map((r) => ({
+    id: uuidv4(), target_type: r.target_type, target_slug: r.target_slug, author_name: r.author_name,
+    rating: r.rating, title: r.title, body: r.body, verified: !!r.verified, helpful: r.helpful || 0,
+    lang: r.lang || 'fr', status: 'approved', created_at: daysAgoISO(r.days_ago),
+  }))
+  if (reviews.length) await database.collection('reviews').insertMany(reviews)
+
+  // Questions + réponses embarquées
+  const questions = SEED_QUESTIONS.map((qd) => ({
+    id: uuidv4(), product_slug: qd.product_slug, author_name: qd.author_name, body: qd.body,
+    lang: qd.lang || 'fr', status: 'approved', created_at: daysAgoISO(qd.days_ago),
+    answers: (qd.answers || []).map((a) => ({
+      id: uuidv4(), author_name: a.author_name, body: a.body, is_staff: !!a.is_staff,
+      lang: a.lang || 'fr', status: 'approved', created_at: daysAgoISO(a.days_ago),
+    })),
+  }))
+  if (questions.length) await database.collection('questions').insertMany(questions)
+
+  // Forum : threads + posts (posts dans une collection dédiée)
+  const threads = []
+  const posts = []
+  for (const t of FORUM_THREADS_SEED) {
+    const threadId = uuidv4()
+    const tPosts = (t.posts || []).map((p) => ({
+      id: uuidv4(), thread_id: threadId, author_name: p.author_name, body: p.body, is_staff: !!p.is_staff,
+      lang: p.lang || 'fr', status: 'approved', created_at: daysAgoISO(p.days_ago),
+    }))
+    const lastActivity = tPosts.length ? tPosts[tPosts.length - 1].created_at : daysAgoISO(t.days_ago)
+    threads.push({
+      id: threadId, category: t.category, title: t.title, body: t.body, author_name: t.author_name,
+      lang: t.lang || 'fr', status: 'approved', pinned: !!t.pinned,
+      created_at: daysAgoISO(t.days_ago), last_activity: lastActivity,
+    })
+    posts.push(...tPosts)
+  }
+  if (threads.length) await database.collection('forum_threads').insertMany(threads)
+  if (posts.length) await database.collection('forum_posts').insertMany(posts)
+}
+
+// Résumé de notation d'une cible : moyenne, total et distribution 1..5.
+async function reviewSummary(database, target_type, target_slug) {
+  const rows = await database.collection('reviews')
+    .find({ target_type, target_slug, status: 'approved' }, { projection: { rating: 1, _id: 0 } }).toArray()
+  const count = rows.length
+  const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  let sum = 0
+  for (const r of rows) { distribution[r.rating] = (distribution[r.rating] || 0) + 1; sum += r.rating }
+  const average = count ? Math.round((sum / count) * 10) / 10 : 0
+  return { average, count, distribution }
+}
+
+
 const ADMIN_COLLECTIONS = ['products', 'brands', 'ingredients', 'articles', 'hubs', 'reels']
 
 // ============ INGREDIENT CONFLICT RULES ============
@@ -565,6 +641,7 @@ export async function GET(request, { params }) {
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
     await backfillArabic(database)
+    await seedCommunityIfEmpty(database)
     const url = new URL(request.url)
     const q = Object.fromEntries(url.searchParams)
 
@@ -696,6 +773,52 @@ export async function GET(request, { params }) {
       return json(routineDoc)
     }
 
+    // ---- REVIEWS (public) ----
+    if (path[0] === 'reviews' && !path[1]) {
+      const target_type = q.target_type
+      const target_slug = q.target_slug
+      if (!target_type || !target_slug) return json({ error: 'target_type and target_slug are required' }, 400)
+      const sort = q.sort === 'helpful' ? { helpful: -1, created_at: -1 } : q.sort === 'rating' ? { rating: -1, created_at: -1 } : { created_at: -1 }
+      const reviews = await database.collection('reviews')
+        .find({ target_type, target_slug, status: 'approved' }, NOID).sort(sort).limit(parseInt(q.limit || '100')).toArray()
+      const summary = await reviewSummary(database, target_type, target_slug)
+      return json({ reviews, summary })
+    }
+
+    // ---- QUESTIONS / Q&A (public, par produit) ----
+    if (path[0] === 'questions' && !path[1]) {
+      if (!q.product_slug) return json({ error: 'product_slug is required' }, 400)
+      const questions = await database.collection('questions')
+        .find({ product_slug: q.product_slug, status: 'approved' }, NOID).sort({ created_at: -1 }).toArray()
+      // N'exposer que les réponses approuvées
+      const clean = questions.map((qd) => ({ ...qd, answers: (qd.answers || []).filter((a) => a.status === 'approved') }))
+      return json({ questions: clean, total: clean.length })
+    }
+
+    // ---- FORUM (public) ----
+    if (path[0] === 'forum') {
+      if (path[1] === 'categories') {
+        return json({ categories: FORUM_CATEGORIES })
+      }
+      if (path[1] === 'threads' && path[2]) {
+        const thread = await database.collection('forum_threads').findOne({ id: path[2], status: 'approved' }, NOID)
+        if (!thread) return json({ error: 'Thread not found' }, 404)
+        const posts = await database.collection('forum_posts')
+          .find({ thread_id: path[2], status: 'approved' }, NOID).sort({ created_at: 1 }).toArray()
+        return json({ thread, posts })
+      }
+      // Liste des discussions (option ?category=)
+      const filter = { status: 'approved' }
+      if (q.category) filter.category = q.category
+      const threads = await database.collection('forum_threads').find(filter, NOID)
+        .sort({ pinned: -1, last_activity: -1 }).limit(parseInt(q.limit || '100')).toArray()
+      const withCounts = await Promise.all(threads.map(async (t) => ({
+        ...t,
+        reply_count: await database.collection('forum_posts').countDocuments({ thread_id: t.id, status: 'approved' }),
+      })))
+      return json({ threads: withCounts, categories: FORUM_CATEGORIES, total: withCounts.length })
+    }
+
     // ---- ADMIN ----
     if (path[0] === 'admin') {
       const session = await requireAdmin(request, database)
@@ -708,8 +831,28 @@ export async function GET(request, { params }) {
         const subscribers = await database.collection('subscribers').find({}, NOID).sort({ created_at: -1 }).toArray()
         return json({ subscribers, total: subscribers.length })
       }
+      if (path[1] === 'reviews') {
+        const filter = {}
+        if (q.status) filter.status = q.status
+        const reviews = await database.collection('reviews').find(filter, NOID).sort({ created_at: -1 }).toArray()
+        return json({ reviews, total: reviews.length })
+      }
+      if (path[1] === 'questions') {
+        const filter = {}
+        if (q.status) filter.status = q.status
+        const questions = await database.collection('questions').find(filter, NOID).sort({ created_at: -1 }).toArray()
+        return json({ questions, total: questions.length })
+      }
+      if (path[1] === 'forum') {
+        const filter = {}
+        if (q.status) filter.status = q.status
+        const threads = await database.collection('forum_threads').find(filter, NOID).sort({ created_at: -1 }).toArray()
+        const posts = await database.collection('forum_posts').find(q.status ? { status: q.status } : {}, NOID).sort({ created_at: -1 }).toArray()
+        return json({ threads, posts, total: threads.length })
+      }
       if (path[1] === 'stats') {
-        const [products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks] = await Promise.all([
+        const [products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks,
+          reviews_pending, questions_pending, forum_pending] = await Promise.all([
           database.collection('products').countDocuments(),
           database.collection('brands').countDocuments(),
           database.collection('ingredients').countDocuments(),
@@ -718,8 +861,11 @@ export async function GET(request, { params }) {
           database.collection('hubs').countDocuments(),
           database.collection('subscribers').countDocuments(),
           database.collection('events').countDocuments({ type: 'affiliate_click' }),
+          database.collection('reviews').countDocuments({ status: 'pending' }),
+          database.collection('questions').countDocuments({ status: 'pending' }),
+          database.collection('forum_threads').countDocuments({ status: 'pending' }),
         ])
-        return json({ products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks })
+        return json({ products, brands, ingredients, articles, leads, hubs, subscribers, affiliate_clicks, reviews_pending, questions_pending, forum_pending })
       }
       return json({ error: 'Not found' }, 404)
     }
@@ -740,6 +886,7 @@ export async function POST(request, { params }) {
     await seedIfEmpty(database)
     await seedReelsIfEmpty(database)
     await backfillArabic(database)
+    await seedCommunityIfEmpty(database)
     const body = await request.json().catch(() => ({}))
 
     // ---- PRODUCT FINDER ----
@@ -897,6 +1044,85 @@ export async function POST(request, { params }) {
       return json(lead, 201)
     }
 
+    // ---- REVIEWS (public submit) ----
+    if (path[0] === 'reviews' && path[1] && path[2] === 'helpful') {
+      const r = await database.collection('reviews').findOneAndUpdate(
+        { id: path[1], status: 'approved' }, { $inc: { helpful: 1 } }, { returnDocument: 'after', projection: { _id: 0 } })
+      if (!r) return json({ error: 'Review not found' }, 404)
+      return json({ ok: true, helpful: r.helpful })
+    }
+    if (path[0] === 'reviews' && !path[1]) {
+      const type = body.target_type
+      const author = (body.author_name || '').trim()
+      const text = (body.body || '').trim()
+      const rating = parseInt(body.rating)
+      if (!['product', 'brand', 'ingredient'].includes(type) || !body.target_slug) return json({ error: 'target_type/target_slug invalid' }, 400)
+      if (author.length < 2) return json({ error: 'author_name is required' }, 400)
+      if (!(rating >= 1 && rating <= 5)) return json({ error: 'rating must be 1-5' }, 400)
+      if (text.length < 5) return json({ error: 'body is too short' }, 400)
+      const doc = {
+        id: uuidv4(), target_type: type, target_slug: body.target_slug, author_name: author.slice(0, 60),
+        email: (body.email || '').trim().toLowerCase(), rating, title: (body.title || '').trim().slice(0, 120),
+        body: text.slice(0, 2000), verified: false, helpful: 0, lang: body.lang || 'fr',
+        status: 'pending', created_at: new Date().toISOString(),
+      }
+      await database.collection('reviews').insertOne({ ...doc })
+      delete doc._id; delete doc.email
+      return json({ ok: true, status: 'pending', review: doc }, 201)
+    }
+
+    // ---- QUESTIONS (public submit + answers) ----
+    if (path[0] === 'questions' && path[1] && path[2] === 'answers') {
+      const author = (body.author_name || '').trim()
+      const text = (body.body || '').trim()
+      if (author.length < 2 || text.length < 5) return json({ error: 'author_name and body are required' }, 400)
+      const answer = { id: uuidv4(), author_name: author.slice(0, 60), body: text.slice(0, 2000), is_staff: false, lang: body.lang || 'fr', status: 'pending', created_at: new Date().toISOString() }
+      const res = await database.collection('questions').updateOne({ id: path[1] }, { $push: { answers: answer } })
+      if (res.matchedCount === 0) return json({ error: 'Question not found' }, 404)
+      return json({ ok: true, status: 'pending' }, 201)
+    }
+    if (path[0] === 'questions' && !path[1]) {
+      const author = (body.author_name || '').trim()
+      const text = (body.body || '').trim()
+      if (!body.product_slug) return json({ error: 'product_slug is required' }, 400)
+      if (author.length < 2 || text.length < 5) return json({ error: 'author_name and body are required' }, 400)
+      const doc = {
+        id: uuidv4(), product_slug: body.product_slug, author_name: author.slice(0, 60), email: (body.email || '').trim().toLowerCase(),
+        body: text.slice(0, 1000), lang: body.lang || 'fr', status: 'pending', answers: [], created_at: new Date().toISOString(),
+      }
+      await database.collection('questions').insertOne({ ...doc })
+      return json({ ok: true, status: 'pending' }, 201)
+    }
+
+    // ---- FORUM (public submit thread / post) ----
+    if (path[0] === 'forum' && path[1] === 'threads' && path[2] && path[3] === 'posts') {
+      const author = (body.author_name || '').trim()
+      const text = (body.body || '').trim()
+      if (author.length < 2 || text.length < 5) return json({ error: 'author_name and body are required' }, 400)
+      const thread = await database.collection('forum_threads').findOne({ id: path[2] })
+      if (!thread) return json({ error: 'Thread not found' }, 404)
+      const post = { id: uuidv4(), thread_id: path[2], author_name: author.slice(0, 60), body: text.slice(0, 4000), is_staff: false, lang: body.lang || 'fr', status: 'pending', created_at: new Date().toISOString() }
+      await database.collection('forum_posts').insertOne({ ...post })
+      return json({ ok: true, status: 'pending' }, 201)
+    }
+    if (path[0] === 'forum' && path[1] === 'threads' && !path[2]) {
+      const author = (body.author_name || '').trim()
+      const title = (body.title || '').trim()
+      const text = (body.body || '').trim()
+      const validCats = FORUM_CATEGORIES.map((c) => c.id)
+      if (!validCats.includes(body.category)) return json({ error: 'invalid category' }, 400)
+      if (author.length < 2) return json({ error: 'author_name is required' }, 400)
+      if (title.length < 5 || text.length < 5) return json({ error: 'title and body are required' }, 400)
+      const now = new Date().toISOString()
+      const doc = {
+        id: uuidv4(), category: body.category, title: title.slice(0, 160), body: text.slice(0, 5000),
+        author_name: author.slice(0, 60), email: (body.email || '').trim().toLowerCase(), lang: body.lang || 'fr',
+        status: 'pending', pinned: false, created_at: now, last_activity: now,
+      }
+      await database.collection('forum_threads').insertOne({ ...doc })
+      return json({ ok: true, status: 'pending' }, 201)
+    }
+
     // ---- ADMIN LOGIN ----
     if (path[0] === 'admin' && path[1] === 'login') {
       const expected = process.env.ADMIN_PASSWORD || 'admin123'
@@ -977,6 +1203,58 @@ export async function PUT(request, { params }) {
     const database = await getDb()
     const body = await request.json().catch(() => ({}))
 
+    // ---- ADMIN MODERATION (community) ----
+    if (path[0] === 'admin' && path[1] === 'reviews' && path[2]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const set = {}
+      if (['pending', 'approved', 'rejected'].includes(body.status)) set.status = body.status
+      if (typeof body.verified === 'boolean') set.verified = body.verified
+      if (!Object.keys(set).length) return json({ error: 'nothing to update' }, 400)
+      const r = await database.collection('reviews').updateOne({ id: path[2] }, { $set: set })
+      if (r.matchedCount === 0) return json({ error: 'Not found' }, 404)
+      const updated = await database.collection('reviews').findOne({ id: path[2] }, NOID)
+      return json(updated)
+    }
+    if (path[0] === 'admin' && path[1] === 'questions' && path[2] && path[3] === 'answers' && path[4]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      if (!['pending', 'approved', 'rejected'].includes(body.status)) return json({ error: 'invalid status' }, 400)
+      const r = await database.collection('questions').updateOne(
+        { id: path[2], 'answers.id': path[4] }, { $set: { 'answers.$.status': body.status } })
+      if (r.matchedCount === 0) return json({ error: 'Not found' }, 404)
+      return json({ ok: true })
+    }
+    if (path[0] === 'admin' && path[1] === 'questions' && path[2]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      if (!['pending', 'approved', 'rejected'].includes(body.status)) return json({ error: 'invalid status' }, 400)
+      const r = await database.collection('questions').updateOne({ id: path[2] }, { $set: { status: body.status } })
+      if (r.matchedCount === 0) return json({ error: 'Not found' }, 404)
+      const updated = await database.collection('questions').findOne({ id: path[2] }, NOID)
+      return json(updated)
+    }
+    if (path[0] === 'admin' && path[1] === 'forum' && path[2] === 'threads' && path[3]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const set = {}
+      if (['pending', 'approved', 'rejected'].includes(body.status)) set.status = body.status
+      if (typeof body.pinned === 'boolean') set.pinned = body.pinned
+      if (!Object.keys(set).length) return json({ error: 'nothing to update' }, 400)
+      const r = await database.collection('forum_threads').updateOne({ id: path[3] }, { $set: set })
+      if (r.matchedCount === 0) return json({ error: 'Not found' }, 404)
+      const updated = await database.collection('forum_threads').findOne({ id: path[3] }, NOID)
+      return json(updated)
+    }
+    if (path[0] === 'admin' && path[1] === 'forum' && path[2] === 'posts' && path[3]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      if (!['pending', 'approved', 'rejected'].includes(body.status)) return json({ error: 'invalid status' }, 400)
+      const r = await database.collection('forum_posts').updateOne({ id: path[3] }, { $set: { status: body.status } })
+      if (r.matchedCount === 0) return json({ error: 'Not found' }, 404)
+      return json({ ok: true })
+    }
+
     if (path[0] === 'admin' && ADMIN_COLLECTIONS.includes(path[1]) && path[2]) {
       const session = await requireAdmin(request, database)
       if (!session) return json({ error: 'Unauthorized' }, 401)
@@ -1000,6 +1278,43 @@ export async function DELETE(request, { params }) {
   try {
     const { path = [] } = await params
     const database = await getDb()
+
+    // ---- ADMIN DELETE (community) ----
+    if (path[0] === 'admin' && path[1] === 'reviews' && path[2]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const r = await database.collection('reviews').deleteOne({ id: path[2] })
+      if (r.deletedCount === 0) return json({ error: 'Not found' }, 404)
+      return json({ success: true })
+    }
+    if (path[0] === 'admin' && path[1] === 'questions' && path[2] && path[3] === 'answers' && path[4]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      await database.collection('questions').updateOne({ id: path[2] }, { $pull: { answers: { id: path[4] } } })
+      return json({ success: true })
+    }
+    if (path[0] === 'admin' && path[1] === 'questions' && path[2]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const r = await database.collection('questions').deleteOne({ id: path[2] })
+      if (r.deletedCount === 0) return json({ error: 'Not found' }, 404)
+      return json({ success: true })
+    }
+    if (path[0] === 'admin' && path[1] === 'forum' && path[2] === 'threads' && path[3]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const r = await database.collection('forum_threads').deleteOne({ id: path[3] })
+      await database.collection('forum_posts').deleteMany({ thread_id: path[3] })
+      if (r.deletedCount === 0) return json({ error: 'Not found' }, 404)
+      return json({ success: true })
+    }
+    if (path[0] === 'admin' && path[1] === 'forum' && path[2] === 'posts' && path[3]) {
+      const session = await requireAdmin(request, database)
+      if (!session) return json({ error: 'Unauthorized' }, 401)
+      const r = await database.collection('forum_posts').deleteOne({ id: path[3] })
+      if (r.deletedCount === 0) return json({ error: 'Not found' }, 404)
+      return json({ success: true })
+    }
 
     if (path[0] === 'admin' && [...ADMIN_COLLECTIONS, 'leads'].includes(path[1]) && path[2]) {
       const session = await requireAdmin(request, database)
